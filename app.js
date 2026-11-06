@@ -28,8 +28,13 @@ const concerns = {
   moisture:{label:'ผิวชุ่มชื้น', message:'สังเกตว่าผิวตึงหรือลอกน้อยลงหลังล้างหน้า', detail:'เลือกมอยส์เจอไรเซอร์ที่มีกลีเซอรีนหรือเซราไมด์ ทาบนผิวหมาดเพื่อกักความชุ่มชื้น ถ้ายังตึง ให้ลองเนื้อครีมเฉพาะบริเวณแห้ง'},
   acne:{label:'สิวลดลง', message:'สังเกตว่ามีสิวใหม่ลดลงจากสัปดาห์ก่อนหรือไม่', detail:'เลือกสูตรระบุว่า non-comedogenic ล้างหน้าเบา ๆ และเลี่ยงการสครับหรือบีบสิว หากสิวยังขึ้นต่อเนื่อง ปวด หรือทิ้งแผลเป็น ให้ปรึกษาแพทย์ผิวหนังเพื่อเลือกการรักษา'},
   spots:{label:'รอยดูจางลง', message:'ถ่ายรูปสัปดาห์ละครั้งด้วยแสงและมุมเดิมเพื่อเทียบรอย', detail:'ใช้กันแดด broad spectrum SPF 30 ขึ้นไปทุกเช้า กันแดดแบบมีสีที่มี iron oxides เป็นอีกตัวเลือกสำหรับรอยคล้ำ ทาซ้ำทุก 2 ชั่วโมงขณะอยู่กลางแจ้งและหลังว่ายน้ำหรือเหงื่อออก'},
-  calm:{label:'ผิวระคายเคืองน้อยลง', message:'จดว่าผิวแสบ แดง หรือคันหลังใช้ผลิตภัณฑ์ตัวไหน', detail:'เลือกคลีนเซอร์และมอยส์เจอไรเซอร์ที่ระบุว่า fragrance-free เริ่มทีละตัวและทดสอบกับผิวบริเวณเล็ก ๆ ก่อน งดสครับหรือผลัดเซลล์ผิวช่วงที่ระคายเคือง'}
+  calm:{label:'ผิวระคายเคืองน้อยลง', message:'จดว่าผิวแสบ แดง หรือคันหลังใช้ผลิตภัณฑ์ตัวไหน', detail:'เลือกคลีนเซอร์และมอยส์เจอไรเซอร์ที่ระบุว่า fragrance-free เริ่มทีละตัวและทดสอบกับผิวบริเวณเล็ก ๆ ก่อน งดสครับหรือผลัดเซลล์ผิวช่วงที่ระคายเคือง'},
+  faceBody:{label:'ผิวหน้าและผิวกายดูกระจ่างใสขึ้น', message:'เลือกจุดที่อยากติดตามบนหน้าและผิวกาย แล้วถ่ายเทียบในแสงเดิม', detail:'เน้นให้รอยคล้ำและสีผิวที่ไม่สม่ำเสมอดูดีขึ้นตามสีผิวธรรมชาติ ทากันแดด SPF 30 ขึ้นไปที่หน้า คอ และผิวกายที่เสื้อผ้าไม่ปิดก่อนออกแดด'},
+  eyes:{label:'ขอบตาดำดูจางลง', message:'ถ่ายเทียบในแสงและมุมเดิม พร้อมจดว่าช่วงนั้นนอนพอไหม', detail:'ขอบตาคล้ำเกิดได้หลายสาเหตุ เช่น พันธุกรรม ภูมิแพ้ หรือพักผ่อนน้อย เริ่มจากนอนให้พอและหลีกเลี่ยงการขยี้ตา'},
+  custom:{label:'เป้าหมายอื่น ๆ', message:'เลือกหนึ่งอย่างที่สังเกตได้ แล้วจดเทียบสัปดาห์ละครั้ง', detail:'ใช้แผนพื้นฐานจากสภาพผิวที่ตอบไว้ และเก็บเป้าหมายที่พิมพ์ไว้สำหรับติดตามผลหรือใช้ถาม ChatGPT เพิ่ม'}
 };
+const skinGoalLabel = (a) => a.concern==='custom' ? a.extraGoal : concerns[a.concern].label;
+const extraSkinGoal = (a) => a.concern==='custom' ? '' : (a.extraGoal ?? '');
 const prefs = {
   dry:['คลีนเซอร์เนื้อครีมหรือโลชันที่อ่อนโยน ล้างแล้วไม่ตึง','มอยส์เจอไรเซอร์เนื้อครีมที่มีกลีเซอรีนหรือเซราไมด์','กันแดดเนื้อโลชันที่ให้ความชุ่มชื้น'],
   oily:['คลีนเซอร์เจลอ่อนโยน ใช้ปลายนิ้วล้างและซับเบา ๆ','มอยส์เจอไรเซอร์เนื้อเจลหรือโลชันบางเบา สูตร non-comedogenic','กันแดดเนื้อบางเบา สูตร non-comedogenic'],
@@ -133,7 +138,9 @@ function readBackup(backup) {
     string(p.goal,100) && (p.goalDate==='' || date(p.goalDate)) &&
     (p.answers===null || (record(p.answers) && Object.hasOwn(skinTypes,p.answers.type) &&
       Object.hasOwn(concerns,p.answers.concern) && ['yes','no','unsure'].includes(p.answers.reaction) &&
-      p.answers.sensitive===(p.answers.reaction==='yes'))) &&
+      p.answers.sensitive===(p.answers.reaction==='yes') &&
+      (p.answers.extraGoal===undefined || string(p.answers.extraGoal,100)) &&
+      (p.answers.concern!=='custom' || Boolean(p.answers.extraGoal?.trim())))) &&
     record(p.days) && Object.entries(p.days).every(([key,value])=>date(key) && day(value)) &&
     Array.isArray(p.logs) && p.logs.every(log=>entry(log) && string(log.text,350)) &&
     Array.isArray(p.photos) && p.photos.length<=maxFacePhotos && p.photos.every(photo=>entry(photo) && jpeg(photo.src) &&
@@ -731,10 +738,10 @@ function exampleCards(p) {
 }
 function planContext(p) {
   const data = p.personal ?? {};
-  const goal = concerns[p.answers.concern];
+  const goal = skinGoalLabel(p.answers);
   const method = data.budget==='compare'?'เทียบเนื้อสัมผัสก่อนตัดสินใจ':data.budget==='simple'?
     'ถ้าจะซื้อเพิ่ม ให้เริ่มทีละตัวจากขั้นที่ยังขาด':'เริ่มจากของที่ใช้อยู่และผิวรับได้';
-  return '<p class="note"><strong>'+goal.label+'</strong> · '+method+
+  return '<p class="note skin-goal-copy"><strong>'+esc(goal)+'</strong> · '+method+
     (data.age==='teen'?' ใช้แผนพื้นฐานและปรึกษาผู้ปกครองก่อนเพิ่มผลิตภัณฑ์เฉพาะปัญหา':'')+
     (data.current?' <span class="subtle">ของที่ใช้ตอนนี้ '+esc(data.current)+'</span>':'')+'</p>';
 }
@@ -743,7 +750,9 @@ function aiPrompt(p) {
   return [
     'ช่วยสังเกตภาพผิวหน้าของฉันที่ฉันเลือกแนบ โดยบอกเฉพาะสิ่งที่มองเห็น เช่น ความเงา ความแดง หรือผิวเป็นขุย ระบุข้อจำกัดเรื่องแสงและมุมภาพ ไม่ระบุอัตลักษณ์ ไม่วินิจฉัยโรคและไม่สรุปประเภทผิวจากรูปอย่างเดียว',
     'สภาพผิวจากการสังเกต: '+skinTypes[a.type]+' · ระคายเคืองจากผลิตภัณฑ์ใหม่: '+({yes:'ค่อนข้างง่าย',no:'ไม่ค่อย',unsure:'ยังไม่แน่ใจ'})[a.reaction],
-    'เป้าหมาย: '+concerns[a.concern].label+(p.goal?' · '+p.goal:''),
+    'เป้าหมายจากแบบเช็กผิว: '+skinGoalLabel(a),
+    extraSkinGoal(a)?'เป้าหมายเพิ่มเติม: '+extraSkinGoal(a):'',
+    p.goal && p.goal!==skinGoalLabel(a)?'เป้าหมายในไดอารี: '+p.goal:'',
     data.age && data.age!=='unsure'?'ช่วงอายุ: '+preferences.age[data.age]:'',
     data.texture && data.texture!=='any'?'เนื้อสัมผัสที่ชอบ: '+preferences.texture[data.texture]:'',
     data.budget?'วิธีเลือกซื้อ: '+preferences.budget[data.budget]:'',
@@ -978,6 +987,7 @@ function skin() {
     '<fieldset class="field"><legend>1. ปกติระหว่างวัน ผิวคุณเป็นแบบไหน?</legend>'+options('type',{balanced:'สบายผิว ไม่ค่อยมัน',dry:'ตึงหรือเป็นขุย',oily:'มันทั่วหน้า',combo:'มันเฉพาะหน้าผาก จมูก คาง',unsure:'ยังไม่แน่ใจ'},a?.type)+'</fieldset>'+
     '<fieldset class="field"><legend>2. ใช้ผลิตภัณฑ์ใหม่แล้วแสบ แดง หรือคันง่ายไหม?</legend>'+options('sensitive',{yes:'ค่อนข้างง่าย',no:'ไม่ค่อย',unsure:'ยังไม่แน่ใจ'},a?.reaction)+'</fieldset>'+
     '<fieldset class="field"><legend>3. ตอนนี้อยากดูแลเรื่องไหนก่อน?</legend>'+options('concern',Object.fromEntries(Object.entries(concerns).map(([key,c])=>[key,c.label])),a?.concern)+'</fieldset>'+
+    '<div class="field"><label for="skin-extra-goal">อยากดูแลเรื่องอื่นด้วยไหม?</label><textarea id="skin-extra-goal" name="extraGoal" rows="2" maxlength="100" aria-describedby="skin-extra-hint" placeholder="เช่น คอดูคล้ำน้อยลง หรือข้อศอกไม่แห้ง">'+esc(a?.extraGoal)+'</textarea><small id="skin-extra-hint">พิมพ์เพิ่มได้ตามใจ หรือเว้นว่างถ้าเลือกเป้าหมายหลักไว้แล้ว</small></div>'+
     personalFields(p)+'<div class="actions"><button class="btn" type="submit">'+icon('sparkle')+'สร้างแผนของฉัน</button></div></form><p class="note">ผลอิงจากคำตอบของคุณ ใช้เป็นจุดเริ่มต้นในการดูแลผิว หากอาการปวด แสบ หรือผื่นเป็นต่อเนื่อง ควรปรึกษาแพทย์ผิวหนัง</p></section>'+
     '<section class="box" id="skin-result" tabindex="-1">'+(a ? results(p) : '<span class="badge-icon mint">'+icon('scan')+'</span><h2 style="margin-top:10px">แผนดูแลผิวของคุณ</h2><p class="subtle">ตอบแบบเช็กผิวเพื่อดูผลและคำแนะนำเฉพาะโปรไฟล์ ระหว่างนี้คุณเริ่มติ๊กรูทีนพื้นฐานได้จากหน้า “วันนี้”</p>')+'</section></div>';
 }
@@ -996,7 +1006,11 @@ function results(p) {
     '<p class="subtle">'+(a.sensitive?'ผิวมีแนวโน้มระคายเคืองง่าย ควรเริ่มด้วยสูตรอ่อนโยน':a.reaction==='unsure'?'ค่อย ๆ สังเกตว่าผิวตอบสนองต่อผลิตภัณฑ์ใหม่อย่างไร':'เริ่มจากรูทีนพื้นฐาน แล้วสังเกตว่าผิวรู้สึกอย่างไร')+'</p>'+
     planContext(p)+'<p class="subtle"><strong>เช้า</strong> ล้างหน้า → มอยส์เจอไรเซอร์ → กันแดด<br><strong>ก่อนนอน</strong> ล้างหน้า → มอยส์เจอไรเซอร์</p>'+
     items.map(([title,detail])=>'<details class="recommend" open><summary>'+title+'</summary><p>'+detail+'</p></details>').join('')+
-    '<details class="recommend" open><summary>โฟกัส · '+focus.label+'</summary><p>'+focus.detail+'</p><p><strong>ติดตามผล</strong> '+focus.message+'</p></details>'+
+    '<details class="recommend skin-goal-copy" open><summary>โฟกัส · '+esc(skinGoalLabel(a))+'</summary><p>'+focus.detail+'</p>'+
+    (extraSkinGoal(a)?'<p><strong>เป้าหมายเพิ่มเติม</strong> '+esc(extraSkinGoal(a))+'</p>':'')+
+    '<p><strong>ติดตามผล</strong> '+focus.message+'</p>'+
+    (a.concern==='faceBody'?'<div class="actions"><button type="button" class="btn light small" data-page="body">เปิดแผนผิวกาย'+icon('arrow')+'</button></div><p><a href="'+source+'everyday-care/skin-care-secrets/routine/fade-dark-spots" target="_blank" rel="noopener">เรื่องรอยคล้ำและกันแดด · AAD</a></p>':'')+
+    (a.concern==='eyes'?'<p><a href="https://my.clevelandclinic.org/health/symptoms/23128-dark-circles-under-eyes" target="_blank" rel="noopener">สาเหตุของขอบตาคล้ำ · Cleveland Clinic</a></p>':'')+'</details>'+
     exampleCards(p)+'<div class="actions"><button type="button" class="btn small" id="apply-skin-plan">ใช้แผนนี้ในรูทีน'+icon('arrow')+'</button>'+
     '<button type="button" class="btn light small" id="photo-checkin">ตั้งวันติดตามผิว</button></div>'+aiCard(p)+
     '<div class="sources">แหล่งอ้างอิงจาก AAD <a target="_blank" rel="noopener" href="'+source+'everyday-care/skin-care-basics/care/skin-care-budget">พื้นฐานการดูแลผิว</a><a target="_blank" rel="noopener" href="'+source+'everyday-care/sun-protection/shade-clothing-sunscreen/how-to-apply-sunscreen">วิธีทากันแดด</a><a target="_blank" rel="noopener" href="'+source+'diseases/acne/skin-care/tips">การดูแลผิวที่เป็นสิว</a></div>';
@@ -1111,7 +1125,9 @@ function reviewPrompt(p) {
     const plan = recurringPlan(p,slot);
     return plan.items.map(item=>({slot,id:item.id,title:item.title,time:item.time || plan.time,detail:item.detail,product:item.product}));
   });
-  const data = {goal:p.goal || (p.answers?concerns[p.answers.concern].label:''),counts,checkin,diary:diary.map(({date,text})=>({date,text})),schedule};
+  const data = {goal:p.goal || (p.answers?skinGoalLabel(p.answers):''),...(p.answers?{
+    skinGoal:skinGoalLabel(p.answers),extraSkinGoal:extraSkinGoal(p.answers)
+  }:{}),counts,checkin,diary:diary.map(({date,text})=>({date,text})),schedule};
   return [
     'ช่วยทบทวนรูทีนผิวจากข้อมูล 7 วันด้านล่าง สรุปเฉพาะสิ่งที่บันทึกไว้และระบุถ้าข้อมูลยังไม่พอ',
     'ตอบเป็น JSON เท่านั้น ใช้รูปแบบ {"summary":"สรุปภาษาไทยไม่เกิน 600 ตัวอักษร","changes":[{"slot":"am","id":"cleanse","time":"07:30","detail":"โน้ตภาษาไทยไม่เกิน 220 ตัวอักษร","reason":"เหตุผลไม่เกิน 160 ตัวอักษร"}]}',
@@ -1204,12 +1220,12 @@ function review() {
 }
 
 function goals() {
-  const p = current(), suggested = p.answers ? concerns[p.answers.concern] : null;
+  const p = current(), suggested = p.answers ? skinGoalLabel(p.answers) : '';
   return sectionHead('02 / SKIN JOURNAL','เป้าหมายผิวของ'+esc(p.name),'เลือกความเปลี่ยนแปลงที่อยากสังเกต แล้วบันทึกสั้น ๆ ระหว่างทาง')+
     '<div class="grid"><div class="stack"><section class="box"><h2>เป้าหมายของฉัน</h2>'+
     (p.goalDate?'<small>เริ่มเป้าหมาย '+thaiDate(p.goalDate)+'</small>':'<p class="subtle">เริ่มจากเป้าหมายเดียวที่สังเกตได้</p>')+
     '<form id="goal-form"><div class="field"><label for="goal">อยากให้ผิวเปลี่ยนอย่างไร?</label><input type="text" name="goal" id="goal" maxlength="100" required placeholder="เช่น หลังล้างหน้า ผิวไม่ตึงเหมือนเดิม" value="'+esc(p.goal)+'"></div>'+
-    (suggested?'<button type="button" class="link-btn" id="suggest-goal">ใช้เป้าหมายจากผลเช็กผิว · '+suggested.label+'</button>':'')+
+    (suggested?'<button type="button" class="link-btn skin-goal-copy" id="suggest-goal">ใช้เป้าหมายจากผลเช็กผิว · '+esc(suggested)+'</button>':'')+
     '<div class="actions"><button type="submit" class="btn">บันทึกเป้าหมาย</button></div></form></section>'+
     '<section class="box"><h2>ความสม่ำเสมอ 7 วัน</h2><p class="subtle">จำนวนขั้นตอนที่ทำในแต่ละวัน</p>'+week(p)+'<div class="actions"><button class="btn light small" data-page="review">'+icon('sparkle')+'ให้ AI ช่วยทบทวนแผน</button></div></section>'+
     weeklyCheckin(p)+'<section class="box"><h2>ไดอารีผิว</h2><form id="log-form"><div class="field"><label for="log">วันนี้สังเกตอะไรบ้าง?</label><textarea id="log" name="log" rows="3" maxlength="350" required placeholder="เช่น แก้มตึงน้อยลงหลังทาครีม"></textarea></div><div class="actions"><button class="btn" type="submit">เพิ่มบันทึก</button></div></form>'+
@@ -1376,7 +1392,7 @@ document.addEventListener('click', (event) => {
     return beginRoutine();
   }
   if (page==='routine' && btn.type==='button') return editorClick(btn);
-  if (btn.id==='suggest-goal') $('goal').value = concerns[current().answers.concern].label;
+  if (btn.id==='suggest-goal') $('goal').value = skinGoalLabel(current().answers);
   if (btn.id==='backup-export') downloadBackup();
   if (btn.id==='backup-import') $('backup-file').click();
   if (btn.dataset.facePicker) $(btn.dataset.facePicker).click();
@@ -1413,8 +1429,13 @@ document.addEventListener('submit', (event) => {
   }
   if (form.id==='apply-body-form') return applyBodyPlan(data);
   if (form.id==='skin-form') {
+    const concern = data.get('concern'), extraGoal = data.get('extraGoal').trim();
+    if (concern==='custom' && !extraGoal) {
+      $('skin-extra-goal').focus();
+      return notify('พิมพ์เป้าหมายที่อยากดูแลก่อนสร้างแผน');
+    }
     if (update(()=>{
-      p.answers = {type:data.get('type'),reaction:data.get('sensitive'),sensitive:data.get('sensitive')==='yes',concern:data.get('concern')};
+      p.answers = {type:data.get('type'),reaction:data.get('sensitive'),sensitive:data.get('sensitive')==='yes',concern,extraGoal};
       p.personal = {age:data.get('age'),texture:data.get('texture'),budget:data.get('budget'),current:data.get('current').trim(),avoid:data.get('avoid').trim()};
     },'สร้างแผนให้คุณแล้ว ♡')) {
       $('skin-result').focus();
