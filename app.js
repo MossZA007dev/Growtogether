@@ -19,7 +19,7 @@ const icons = {
 const icon = (name) => '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'+icons[name]+'</svg>';
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const $ = (id) => document.getElementById(id);
-const routes = {home:['home','วันนี้'], skin:['scan','เช็กผิว'], calendar:['calendar','ปฏิทิน'], goals:['target','เป้าหมาย'], profile:['user','โปรไฟล์'], body:null, routine:null, reminders:null, review:null};
+const routes = {home:['home','วันนี้'], skin:['scan','เช็กผิว'], calendar:['calendar','ปฏิทิน'], goals:['target','เป้าหมาย'], profile:['user','โปรไฟล์'], body:null, routine:null, reminders:null, review:null, share:null, shared:null};
 const periods = {am:'ตอนเช้า',pm:'ก่อนนอน'};
 const maxSteps = 8;
 const skinTypes = {balanced:'ผิวสมดุล', dry:'ผิวแห้ง', oily:'ผิวมัน', combo:'ผิวผสม', unsure:'ยังไม่แน่ใจ'};
@@ -51,6 +51,7 @@ let page = 'home';
 let toastTimer;
 let draft;
 let showCompleted = false;
+let showSkipped = false;
 const current = () => state.people[state.active];
 const dayKey = (date = new Date()) => [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
 const thaiDate = (key, options = {day:'numeric',month:'long'}) => new Intl.DateTimeFormat('th-TH',options).format(new Date(key+'T12:00:00'));
@@ -68,6 +69,7 @@ function update(change, message) {
   const previous = structuredClone(state);
   change();
   try {
+    archiveToday(current());
     localStorage.setItem(storageKey, JSON.stringify(state));
   } catch {
     state = previous;
@@ -120,6 +122,10 @@ function readBackup(backup) {
       h.days.every(day=>allWeekdays.includes(day)));
   const uniqueItems = (items,test) => Array.isArray(items) && items.every(test) &&
     new Set(items.map(h=>h.id)).size===items.length;
+  const taskHistory = (tasks) => Array.isArray(tasks) && tasks.every(task=>
+    record(task) && validId(task.id) && (task.slot==='' || Object.hasOwn(periods,task.slot)) &&
+    string(task.title,60) && string(task.product,80) && string(task.detail,220) &&
+    (task.time==='' || clock(task.time))) && new Set(tasks.map(taskKey)).size===tasks.length;
   const personal = (p) => record(p) && Object.entries(preferences).every(([key,values])=>
     Object.hasOwn(values,p[key])) && string(p.current,180) && string(p.avoid,180);
   const validProfile = (p) => record(p) && string(p.name,24) && p.name.trim() &&
@@ -137,6 +143,14 @@ function readBackup(backup) {
     (p.personal===undefined || personal(p.personal)) &&
     (p.bodyPlan===undefined || (record(p.bodyPlan) && Object.hasOwn(bodyGoals,p.bodyPlan.goal) &&
       Object.hasOwn(bodyFeel,p.bodyPlan.feel) && string(p.bodyPlan.avoid,180))) &&
+    (p.dayTasks===undefined || (record(p.dayTasks) &&
+      Object.entries(p.dayTasks).every(([key,tasks])=>date(key) && taskHistory(tasks)))) &&
+    (p.skipped===undefined || (record(p.skipped) &&
+      Object.entries(p.skipped).every(([key,tasks])=>date(key) && Array.isArray(tasks) &&
+        tasks.every(task=>typeof task==='string' && /^(?:am|pm|habit)-[a-z0-9-]{1,64}$/i.test(task))))) &&
+    (p.checkins===undefined || (record(p.checkins) && Object.entries(p.checkins).every(([key,checkin])=>
+      date(key) && record(checkin) && date(checkin.date) && Object.hasOwn(checkinLabels,checkin.rating) &&
+      string(checkin.note,200)))) &&
     (p.habits===undefined || (uniqueItems(p.habits,schedule) && p.habits.length<=32)) &&
     (p.habitChecks===undefined || (record(p.habitChecks) &&
       Object.entries(p.habitChecks).every(([key,items])=>date(key) && uniqueItems(items,habitItem))));
@@ -218,7 +232,7 @@ const goto = (pageId) => {
   if (!Object.hasOwn(routes,pageId)) return;
   if (pageId==='routine' && !draft) pageId = 'home';
   if (pageId!=='routine') draft = undefined;
-  if (pageId!=='home') showCompleted = false;
+  if (pageId!=='home') showCompleted = showSkipped = false;
   if (pageId!=='review') reviewDraft = null;
   if (pageId!=='calendar') habitDraft = null;
   page = pageId;
@@ -263,19 +277,6 @@ function habitsOn(p,key) {
   const planned = (p.habits ?? []).filter(h=>key>=h.since && (h.once ? h.once===key : h.days.includes(weekday(key))));
   return [...planned,...done.filter(task=>!planned.some(h=>h.id===task.id))]
     .sort((first,second)=>(first.time || '99:99').localeCompare(second.time || '99:99'));
-}
-function habitList(p,key) {
-  const habits = habitsOn(p,key);
-  if (!habits.length) return '<p class="subtle">'+(key<dayKey()?'ไม่มีงานที่เช็กว่าเสร็จในวันนี้':'ยังไม่มีงานในวันนี้')+'</p>';
-  return '<ul class="steps">'+habits.map(h=>{
-    const checked = checksOn(p,key).some(task=>task.id===h.id);
-    const content = '<span class="stepicon">'+icon('calendar')+'</span><span class="step-content"><strong>'+esc(h.title)+'</strong>'+
-      '<small>'+(h.time?esc(displayTime(h.time)):'ไม่กำหนดเวลา')+(h.detail?' · '+esc(h.detail):'')+'</small></span>'+
-      '<span class="step-check" aria-hidden="true">'+(checked?icon('check'):'')+'</span>';
-    return '<li class="step">'+(key===dayKey()
-      ? '<button class="step-toggle habit-toggle" type="button" data-habit="'+h.id+'" aria-pressed="'+checked+'">'+content+'</button>'
-      : '<div class="step-toggle habit-toggle" '+(checked?'data-done="true"':'')+'>'+content+'</div>')+'</li>';
-  }).join('')+'</ul>';
 }
 function habitForm() {
   const h = habitDraft;
@@ -378,21 +379,21 @@ function exportReminders(data) {
 
 function calendar() {
   const p = current(), today = dayKey(), start = shiftDate(calendarDate,-weekday(calendarDate));
-  const end = shiftDate(start,6);
+  const end = shiftDate(start,6), tasks = calendarTimeline(p,calendarDate);
   return sectionHead('WEEKLY CARE','ปฏิทินของ'+esc(p.name),'วางตารางดูแลตัวเองตามวันที่สะดวก แล้วเช็กงานของวันนี้ได้เลย')+
     '<div class="grid calendar-grid"><div class="stack"><section class="box"><div class="calendar-head">'+
     '<button type="button" class="btn light small" data-week="-7" aria-label="สัปดาห์ก่อน">‹</button><strong>'+thaiDate(start)+' – '+thaiDate(end)+'</strong>'+
     '<button type="button" class="btn light small" data-week="7" aria-label="สัปดาห์ถัดไป">›</button></div>'+
     '<div class="calendar-week" aria-label="เลือกวัน">'+weekdays.map((label,index)=>{
-      const key = shiftDate(start,index), count = habitsOn(p,key).length;
+      const key = shiftDate(start,index), count = calendarTimeline(p,key).length;
       return '<button type="button" data-calendar-date="'+key+'" aria-label="'+thaiDate(key,{weekday:'long',day:'numeric',month:'long'})+(count?' '+count+' งาน':'')+'" aria-pressed="'+(key===calendarDate)+'">'+
         '<small>'+label+'</small><strong>'+Number(key.slice(-2))+'</strong><span>'+ (count?count+' งาน':'·') +'</span></button>';
     }).join('')+'</div>'+
     '<div class="section-top calendar-selected"><div><h2>'+thaiDate(calendarDate,{weekday:'long',day:'numeric',month:'long'})+'</h2></div>'+
     (calendarDate===today?'<span class="pill">วันนี้</span>':'<button type="button" class="link-btn" data-calendar-date="'+today+'">กลับวันนี้</button>')+'</div>'+
-    (calendarDate>=today?'<div class="calendar-routine"><strong>สกินแคร์ตามแผน</strong><div class="choices">'+
-      Object.entries(periods).map(([time,label])=>'<span class="pill">'+label+' · '+esc(displayTime(planFor(p,time,calendarDate).time))+'</span>').join('')+
-      '</div></div>':'')+habitList(p,calendarDate)+'</section>'+
+    (tasks.length?'<ul class="steps calendar-tasks">'+tasks.map(task=>timelineRow(task,false,calendarDate===today)).join('')+'</ul>':
+      '<p class="subtle">ไม่มีตารางที่บันทึกไว้สำหรับวันนี้</p>')+
+    (calendarDate<today && !p.dayTasks?.[calendarDate]?'<p class="subtle">วันเก่าแสดงเฉพาะงานที่มีประวัติบันทึกไว้</p>':'')+'</section>'+
     (habitDraft ? habitForm() : '<section class="box"><h2>เพิ่มงาน</h2><p class="subtle">เลือกตัวอย่างแล้วปรับวันและเวลาได้</p><div class="actions">'+
       Object.entries(habitPresets).map(([key,h])=>'<button type="button" class="btn light small" data-preset="'+key+'">'+h.title+'</button>').join('')+
       '<button type="button" class="btn" data-preset="custom">＋ งานของฉัน</button></div><div class="sources"><a href="https://www.ada.org/resources/ada-library/oral-health-topics/home-oral-care/" target="_blank" rel="noopener">การดูแลฟัน</a><a href="https://www.aad.org/public/everyday-care/hair-scalp-care/hair/healthy-hair-tips" target="_blank" rel="noopener">การสระผม</a><a href="https://www.aad.org/public/everyday-care/skin-care-secrets/routine/safely-exfoliate-at-home" target="_blank" rel="noopener">การสครับผิว</a></div></section>')+
@@ -426,39 +427,91 @@ function saveHabit(data) {
     window.scrollTo(0,0);
   }
 }
-function toggleHabit(id) {
-  const p = current(), key = dayKey(), task = habitsOn(p,key).find(h=>h.id===id);
+const taskKey = (task) => (task.slot || 'habit')+'-'+task.id;
+const taskLabels = {pending:'รอทำ',done:'เสร็จแล้ว',skipped:'ข้ามวันนี้'};
+
+function taskStatus(p,date,task) {
+  const checked = task.slot ? p.days[date]?.[task.slot]?.includes(task.id) :
+    checksOn(p,date).some(item=>item.id===task.id);
+  if (checked) return 'done';
+  return p.skipped?.[date]?.includes(taskKey(task)) ? 'skipped' : 'pending';
+}
+
+function archiveToday(p) {
+  const date = dayKey();
+  (p.dayTasks ??= {})[date] = todayTimeline(p,date).map(({id,slot,time,title,product,detail})=>({
+    id,slot:slot || '',time,title,product:product || '',detail
+  }));
+  const cutoff = shiftDate(date,-89);
+  for (const key of Object.keys(p.dayTasks)) {
+    if (key<cutoff) delete p.dayTasks[key];
+  }
+}
+
+function calendarTimeline(p,date) {
+  if (date>=dayKey()) return todayTimeline(p,date);
+  const stored = p.dayTasks?.[date];
+  if (stored) return stored.map(task=>({
+    ...task,label:task.slot?'สกินแคร์ · '+periods[task.slot]:'ดูแลตัวเอง',status:taskStatus(p,date,task)
+  }));
+  const old = p.days[date];
+  const routine = Object.keys(periods).flatMap(slot=>{
+    const plan = defaultPlan(p,slot);
+    return (old?.planned?.[slot] ?? old?.[slot] ?? []).map(id=>{
+      const item = plan.items.find(step=>step.id===id);
+      const task = {id,slot,time:'',title:item?.title ?? 'ขั้นตอนสกินแคร์ที่เคยบันทึก',
+        label:'สกินแคร์ · '+periods[slot],detail:''};
+      return {...task,status:taskStatus(p,date,task)};
+    });
+  });
+  return [...routine,...checksOn(p,date).map(task=>({...task,label:'ดูแลตัวเอง',status:'done'}))];
+}
+
+function changeTaskStatus(key, action) {
+  const p = current(), date = dayKey();
+  const task = todayTimeline(p,date).find(item=>taskKey(item)===key);
   if (!task) return;
-  const checked = checksOn(p,key);
-  const done = checked.some(h=>h.id===id);
+  const status = action==='skip' ? (task.status==='skipped'?'pending':'skipped') :
+    task.status==='done'?'pending':'done';
   if (update(()=>{
-    (p.habitChecks ??= {})[key] = done ? checked.filter(h=>h.id!==id) :
-      [...checked,{id:task.id,title:task.title,time:task.time,detail:task.detail}];
-  })) focusAfterCheck('[data-habit="'+id+'"]');
+    const skipped = (p.skipped?.[date] ?? []).filter(value=>value!==key);
+    if (status==='skipped') skipped.push(key);
+    if (skipped.length || p.skipped?.[date]) (p.skipped ??= {})[date] = skipped;
+    if (task.slot) {
+      const day = p.days[date] ??= {am:[],pm:[]};
+      day[task.slot] = day[task.slot].filter(id=>id!==task.id);
+      if (status==='done') day[task.slot].push(task.id);
+      refreshDay(p,date);
+    } else {
+      const checked = checksOn(p,date).filter(item=>item.id!==task.id);
+      if (status==='done') checked.push({id:task.id,title:task.title,time:task.time,detail:task.detail});
+      (p.habitChecks ??= {})[date] = checked;
+    }
+  })) focusAfterCheck('[data-task="'+key+'"]');
 }
 
 function todayTimeline(p, date) {
   const routine = Object.keys(periods).flatMap(slot=>{
     const plan = planFor(p,slot,date);
-    return plan.items.map(item=>({
-      ...item,slot,time:item.time || plan.time,label:'สกินแคร์ · '+periods[slot],
-      checked:p.days[date]?.[slot]?.includes(item.id) ?? false
-    }));
+    return plan.items.map(item=>({...item,slot,time:item.time || plan.time,label:'สกินแคร์ · '+periods[slot]}));
   });
-  const habits = habitsOn(p,date).map(item=>({
-    ...item, label:'ดูแลตัวเอง', checked:checksOn(p,date).some(done=>done.id===item.id)
-  }));
-  return [...routine,...habits].sort((a,b)=>(a.time || '99:99').localeCompare(b.time || '99:99'));
+  const habits = habitsOn(p,date).map(item=>({...item,label:'ดูแลตัวเอง'}));
+  return [...routine,...habits].sort((a,b)=>(a.time || '99:99').localeCompare(b.time || '99:99'))
+    .map(task=>({...task,status:taskStatus(p,date,task)}));
 }
 
-function timelineRow(task, next = false) {
+function timelineRow(task, next = false, editable = true) {
   const source = task.slot ? productImage(task) : '<span class="stepicon">'+icon('calendar')+'</span>';
-  const action = task.slot ? 'data-step="'+task.id+'" data-slot="'+task.slot+'"' : 'data-habit="'+task.id+'"';
-  return '<li class="step'+(next?' timeline-next':'')+'"><button type="button" class="step-toggle" '+action+' aria-pressed="'+task.checked+'">'+
-    source+'<span class="step-content"><small class="step-number">'+(task.time?displayTime(task.time):'ไม่กำหนดเวลา')+
-    ' · '+task.label+(next?' · งานถัดไป':'')+'</small><strong>'+esc(task.title)+'</strong>'+
+  const title = esc(task.title), status = taskLabels[task.status], key = taskKey(task);
+  const content = source+'<span class="step-content"><small class="step-number">'+
+    (task.time?esc(displayTime(task.time)):'ไม่กำหนดเวลา')+' · '+task.label+(next?' · งานถัดไป':'')+'</small><strong>'+title+'</strong>'+
     '<small>'+(task.product?'<b>'+esc(task.product)+'</b>':'')+esc(task.detail)+'</small></span>'+
-    '<span class="step-check" aria-hidden="true">'+(task.checked?icon('check'):'')+'</span></button></li>';
+    '<span class="task-status '+task.status+'">'+status+'</span>';
+  const row = editable ? '<button type="button" class="step-toggle" data-task="'+key+'" aria-pressed="'+(task.status==='done')+'">'+content+'</button>' :
+    '<div class="step-toggle">'+content+'</div>';
+  const skip = editable && task.status!=='done' ? '<button type="button" class="link-btn task-skip" data-skip-task="'+key+'" aria-label="'+
+    (task.status==='skipped'?'คืนเป็นรอทำ ':'ข้ามวันนี้ ')+title+'">'+(task.status==='skipped'?'คืนเป็นรอทำ':'ข้าม')+'</button>' : '';
+  return '<li class="step'+(next?' timeline-next':'')+'">'+row+skip+'</li>';
 }
 
 function morningControl(p, date, remaining) {
@@ -476,9 +529,9 @@ function morningControl(p, date, remaining) {
 
 function startMorning(now = new Date()) {
   const p = current(), date = dayKey(now);
-  const completed = p.days[date]?.am ?? [];
   const plan = basePlanFor(p,'am',date);
-  if (p.morningStart?.date===date || plan.items.every(item=>completed.includes(item.id))) return;
+  const completed = plan.items.filter(item=>taskStatus(p,date,{id:item.id,slot:'am'})!=='pending').map(item=>item.id);
+  if (p.morningStart?.date===date || completed.length===plan.items.length) return;
   const time = minuteClock(now.getHours()*60+now.getMinutes());
   if (update(()=>{p.morningStart = {date,time,completed:[...completed]};},'เริ่มรูทีนเช้าวันนี้ '+displayTime(time))) {
     $('undo-morning-start')?.focus();
@@ -489,17 +542,20 @@ function home() {
   const date = dayKey();
   const p = current();
   const timeline = todayTimeline(p,date);
-  const remaining = timeline.filter(task=>!task.checked);
-  const completed = timeline.filter(task=>task.checked);
+  const remaining = timeline.filter(task=>task.status==='pending');
+  const skipped = timeline.filter(task=>task.status==='skipped');
+  const completed = timeline.filter(task=>task.status==='done');
   return '<div class="today-head"><div class="today-intro"><div class="date kicker">'+icon('calendar')+thaiDate(date,{weekday:'long',day:'numeric',month:'long'})+'</div>'+
     '<h1>วันนี้ของ'+esc(p.name)+' <span aria-hidden="true">♡</span></h1><p class="subtle">เปิดดูงานถัดไป แล้วแตะทั้งแถวเมื่อทำเสร็จ</p></div><img src="ritual.svg" alt=""></div>'+
     '<div class="dash"><section class="box timeline"><div class="section-top"><div><span class="kicker">DAILY CARE</span><h2>ตารางวันนี้</h2></div>'+
     '<span class="pill">'+completed.length+'/'+timeline.length+' งาน</span></div>'+bar(completed.length,timeline.length)+
     morningControl(p,date,remaining)+
     (remaining.length ? '<ul class="steps">'+remaining.map((task,index)=>timelineRow(task,index===0)).join('')+'</ul>' :
-      '<p class="note">ครบทุกงานของวันนี้แล้ว ♡</p>')+
+      '<p class="note">'+(skipped.length?'จัดการงานวันนี้ครบแล้ว ♡':'ครบทุกงานของวันนี้แล้ว ♡')+'</p>')+
     (completed.length ? '<details class="timeline-done" '+(showCompleted?'open':'')+'><summary>ทำเสร็จแล้ว · '+completed.length+' งาน</summary>'+
       '<ul class="steps">'+completed.map(task=>timelineRow(task)).join('')+'</ul></details>' : '')+
+    (skipped.length?'<details class="timeline-done" '+(showSkipped?'open':'')+' data-skipped><summary>ข้ามวันนี้ · '+skipped.length+' งาน</summary><ul class="steps">'+
+      skipped.map(task=>timelineRow(task)).join('')+'</ul></details>':'')+
     '<div class="actions today-actions"><button type="button" class="btn light small" data-edit-period="am">แก้รูทีนเช้า</button>'+
     '<button type="button" class="btn light small" data-edit-period="pm">แก้รูทีนก่อนนอน</button>'+
     '<button type="button" class="btn light small" id="open-calendar">เปิดปฏิทิน</button>'+
@@ -507,9 +563,9 @@ function home() {
     '<aside class="rightcol"><section class="box couple"><div class="section-top"><div class="badge-icon">'+icon('heart')+'</div><div><h3>ทำไปด้วยกัน</h3><small>ตารางวันนี้ของเราสองคน</small></div></div>'+
     state.people.map((person,index)=>{
       const tasks = todayTimeline(person,date);
-      const done = tasks.filter(task=>task.checked).length;
+      const done = tasks.filter(task=>task.status==='done').length;
       return '<div class="couple-row">'+avatar(person,index)+'<strong>'+esc(person.name)+'</strong>'+bar(done,tasks.length)+'<small>'+done+'/'+tasks.length+'</small></div>';
-    }).join('')+'</section>'+
+    }).join('')+'<button type="button" class="link-btn" data-page="share">แชร์ยอด 7 วัน</button></section>'+
     '<section class="box goal-card"><div class="goal-head"><div class="badge-icon mint">'+icon('target')+'</div><div><span class="kicker">MY SKIN GOAL</span><h3>เป้าหมายของ'+esc(p.name)+'</h3></div></div><p class="subtle">'+esc(p.goal || 'เลือกสิ่งที่อยากให้ผิวค่อย ๆ ดีขึ้น')+'</p><button class="link-btn" data-page="goals">'+(p.goal?'ดูความคืบหน้า':'ตั้งเป้าหมาย')+icon('arrow')+'</button></section></aside></div>';
 }
 
@@ -796,18 +852,98 @@ function results(p) {
     '<div class="sources">แหล่งอ้างอิงจาก AAD <a target="_blank" rel="noopener" href="'+source+'everyday-care/skin-care-basics/care/skin-care-budget">พื้นฐานการดูแลผิว</a><a target="_blank" rel="noopener" href="'+source+'everyday-care/sun-protection/shade-clothing-sunscreen/how-to-apply-sunscreen">วิธีทากันแดด</a><a target="_blank" rel="noopener" href="'+source+'diseases/acne/skin-care/tips">การดูแลผิวที่เป็นสิว</a></div>';
 }
 
-function week(p) {
-  const today = new Date();
-  const days = Array.from({length:7},(_,i)=>{
-    const date = new Date(today.getFullYear(),today.getMonth(),today.getDate()-6+i);
-    const key = dayKey(date);
-    return {key,...progressFor(p,key)};
+const checkinLabels = {better:'ดีขึ้น',same:'เหมือนเดิม',worse:'แย่ลง',unsure:'ยังไม่แน่ใจ'};
+const weekStart = (key) => shiftDate(key,-weekday(key));
+
+function weeklyStats(p, end = dayKey()) {
+  return Array.from({length:7},(_,index)=>{
+    const key = shiftDate(end,index-6);
+    return {key,...progressFor(p,key),other:checksOn(p,key).length,
+      recorded:key===dayKey() || Boolean(p.days[key] || p.dayTasks?.[key] || p.habitChecks?.[key])};
   });
+}
+
+function weeklyCheckin(p) {
+  const key = weekStart(dayKey()), checkin = p.checkins?.[key];
+  const recent = Object.entries(p.checkins ?? {}).filter(([week])=>week<key).sort(([a],[b])=>b.localeCompare(a)).slice(0,3);
+  return '<section class="box"><span class="kicker">WEEKLY CHECK-IN</span><h2>เช็กอินผิวสัปดาห์นี้</h2>'+
+    '<p class="subtle">สัปดาห์เริ่ม '+thaiDate(key)+(checkin?' · บันทึกล่าสุด '+thaiDate(checkin.date):'')+'</p>'+
+    '<form id="checkin-form"><fieldset class="field"><legend>ผิวเป็นอย่างไรเมื่อเทียบกับสัปดาห์ก่อน?</legend>'+
+    options('rating',checkinLabels,checkin?.rating)+'</fieldset>'+
+    '<div class="field"><label for="checkin-note">สังเกตอะไรได้บ้าง? (ไม่บังคับ)</label>'+
+    '<textarea id="checkin-note" name="note" rows="2" maxlength="200" placeholder="เช่น แก้มตึงน้อยลงหลังล้างหน้า">'+esc(checkin?.note)+'</textarea></div>'+
+    '<div class="actions"><button type="submit" class="btn">'+(checkin?'อัปเดตเช็กอิน':'บันทึกเช็กอิน')+'</button></div></form>'+
+    (recent.length?'<details class="timeline-done"><summary>เช็กอินก่อนหน้า</summary>'+recent.map(([,entry])=>
+      '<article class="log"><small>'+thaiDate(entry.date)+'</small><p><strong>'+checkinLabels[entry.rating]+'</strong>'+
+      (entry.note?' · '+esc(entry.note):'')+'</p></article>').join('')+'</details>':'')+'</section>';
+}
+
+function comparePhotos(p) {
+  if (p.photos.length<2) return '<p class="subtle">เมื่อมีสองรูปขึ้นไป รูปแรกกับรูปล่าสุดจะมาอยู่คู่กันตรงนี้</p>';
+  return '<div class="photo-grid compare-photos">'+[['รูปแรก',p.photos.at(-1)],['รูปล่าสุด',p.photos[0]]].map(([label,photo])=>
+    '<figure><figcaption><strong>'+label+'</strong><small>'+thaiDate(photo.date)+'</small></figcaption>'+
+    '<img class="photo" src="'+esc(photo.src)+'" alt="'+label+' '+thaiDate(photo.date)+'"></figure>').join('')+'</div>';
+}
+
+const sharedBase = 'https://mossza007dev.github.io/Growtogether/';
+let sharedCounts = null;
+function sharedProgressHash(hash) {
+  const match = /^shared\/(\d{4}-\d{2}-\d{2})\/((?:\d{1,4}|x)(?:\.(?:\d{1,4}|x)){6})$/.exec(hash);
+  if (!match) return null;
+  const [,date,encoded] = match;
+  const parsed = new Date(date+'T12:00:00');
+  if (!Number.isFinite(parsed.getTime()) || dayKey(parsed)!==date) return null;
+  return {date,counts:encoded.split('.').map(value=>value==='x'?null:Number(value))};
+}
+
+function share() {
+  const stats = weeklyStats(current());
+  const encoded = stats.map(day=>day.recorded?Math.min(9999,day.done+day.other):'x').join('.');
+  const url = sharedBase+'#shared/'+stats.at(-1).key+'/'+encoded;
+  return sectionHead('SHARE PROGRESS','แชร์ยอดที่ทำเสร็จ','เลือกส่งยอด 7 วันให้แฟนดูได้จากอีกเครื่อง')+
+    '<section class="box"><h2>สิ่งที่อยู่ในลิงก์</h2><p class="subtle">มีเฉพาะวันที่และจำนวนงานที่ทำเสร็จ ชื่อ รูป ไดอารี และชื่องานเก็บอยู่ในเครื่อง</p>'+
+    sharedCountsGrid(stats.map(day=>({date:day.key,count:day.recorded?day.done+day.other:null})))+
+    '<p class="note">ลิงก์เป็นภาพรวม ณ วันที่แชร์ ใครที่ได้รับลิงก์จะเปิดดูยอดนี้ได้ ถ้าอยากส่งยอดใหม่ให้สร้างลิงก์อีกครั้ง</p>'+
+    '<div class="field"><label for="progress-link">ลิงก์แชร์</label><input id="progress-link" type="text" readonly value="'+esc(url)+'"></div>'+
+    '<div class="actions"><button type="button" class="btn" id="share-progress">แชร์ลิงก์</button>'+
+    '<button type="button" class="btn light" id="copy-progress">คัดลอกลิงก์</button></div></section>';
+}
+function sharedCountsGrid(days) {
+  return '<div class="week">'+days.map(({date,count})=>'<div><small>'+thaiDate(date,{day:'numeric',month:'short'})+
+    '</small><strong>'+(count===null?'–':count)+'</strong></div>').join('')+'</div>';
+}
+function shared() {
+  const {date,counts} = sharedCounts ?? {};
+  return sectionHead('GLOW TOGETHER','ยอดที่ได้รับจากลิงก์','จำนวนงานที่ทำเสร็จในช่วง 7 วัน')+
+    '<section class="box">'+(counts?'<h2>'+thaiDate(shiftDate(date,-6))+' – '+thaiDate(date)+'</h2>'+
+      sharedCountsGrid(counts.map((count,index)=>({date:shiftDate(date,index-6),count})))+
+      '<p class="note">ขีดหมายถึงวันนั้นไม่มีข้อมูลบันทึกไว้</p>':'<p class="note">เปิดยอดจากลิงก์นี้ไม่ได้</p>')+
+    '<div class="actions"><button type="button" class="btn" data-page="home">กลับหน้าวันนี้</button></div></section>';
+}
+async function shareProgress(useShare) {
+  const field = $('progress-link'), url = field.value;
+  try {
+    if (useShare && navigator.share) {
+      await navigator.share({title:'Glow Together · ยอดที่ทำเสร็จ',url});
+    } else {
+      await navigator.clipboard.writeText(url);
+      notify('คัดลอกลิงก์แล้ว');
+    }
+  } catch (error) {
+    if (error.name==='AbortError') return;
+    field.focus();
+    field.select();
+    notify('เลือกข้อความแล้ว แตะคัดลอกลิงก์ได้เลย');
+  }
+}
+
+function week(p) {
+  const days = weeklyStats(p);
   const tracked = days.filter(day=>day.done>0).length;
   const completed = days.filter(day=>day.done===day.total).length;
-  return '<div class="week">'+days.map(({key,done,total},i)=>
+  return '<div class="week">'+days.map(({key,done,total,recorded},i)=>
     '<div class="'+(i===6?'today':'')+'">'+thaiDate(key,{weekday:'short'})+'<strong>'+
-      (i===6 || p.days[key] ? done+'/'+total : '–')+'</strong></div>').join('')+'</div>'+
+      (recorded ? done+'/'+total : '–')+'</strong></div>').join('')+'</div>'+
     '<p class="note">'+(tracked?'ทำรูทีน '+tracked+' จาก 7 วัน และทำครบ '+completed+' วัน':'เมื่อติ๊กขั้นตอนในรูทีน สรุปความสม่ำเสมอจะแสดงตรงนี้')+'</p>';
 }
 let reviewDraft = null;
@@ -816,16 +952,16 @@ const recurringPlan = (p,slot) => p.routine?.[slot] ?? defaultPlan(p,slot);
 function reviewPrompt(p) {
   const today = dayKey(), start = shiftDate(today,-6);
   const diary = p.logs.filter(log=>log.date>=start && log.date<=today).slice(0,14);
-  const counts = Array.from({length:7},(_,i)=>{
-    const date = shiftDate(start,i);
-    const {done,total} = progressFor(p,date);
-    return {date,routine:p.days[date] || date===today ? done+'/'+total : 'ไม่ได้บันทึก',other:checksOn(p,date).length};
-  });
+  const counts = weeklyStats(p).map(({key,done,total,recorded,other})=>({
+    date:key,routine:recorded?done+'/'+total:'ไม่ได้บันทึก',other
+  }));
+  const checkin = Object.values(p.checkins ?? {}).filter(entry=>entry.date>=start && entry.date<=today)
+    .map(entry=>({date:entry.date,rating:checkinLabels[entry.rating],note:entry.note}));
   const schedule = Object.keys(periods).flatMap(slot=>{
     const plan = recurringPlan(p,slot);
     return plan.items.map(item=>({slot,id:item.id,title:item.title,time:item.time || plan.time,detail:item.detail,product:item.product}));
   });
-  const data = {goal:p.goal || (p.answers?concerns[p.answers.concern].label:''),counts,diary:diary.map(({date,text})=>({date,text})),schedule};
+  const data = {goal:p.goal || (p.answers?concerns[p.answers.concern].label:''),counts,checkin,diary:diary.map(({date,text})=>({date,text})),schedule};
   return [
     'ช่วยทบทวนรูทีนผิวจากข้อมูล 7 วันด้านล่าง สรุปเฉพาะสิ่งที่บันทึกไว้และระบุถ้าข้อมูลยังไม่พอ',
     'ตอบเป็น JSON เท่านั้น ใช้รูปแบบ {"summary":"สรุปภาษาไทยไม่เกิน 600 ตัวอักษร","changes":[{"slot":"am","id":"cleanse","time":"07:30","detail":"โน้ตภาษาไทยไม่เกิน 220 ตัวอักษร","reason":"เหตุผลไม่เกิน 160 ตัวอักษร"}]}',
@@ -888,14 +1024,23 @@ function applyReview(data) {
 function review() {
   const p = current(), result = reviewDraft;
   const override = p.todayRoutine?.date===dayKey() && Object.keys(periods).some(slot=>p.todayRoutine[slot]);
+  const stats = weeklyStats(p), start = stats[0].key, end = stats.at(-1).key;
+  const notes = p.logs.filter(log=>log.date>=start && log.date<=end);
+  const checkin = Object.values(p.checkins ?? {}).filter(entry=>entry.date>=start && entry.date<=end)
+    .sort((a,b)=>b.date.localeCompare(a.date))[0];
+  const other = stats.reduce((sum,day)=>sum+day.other,0);
   return sectionHead('WEEKLY REVIEW','ทบทวนแผนของ'+esc(p.name),'ดูบันทึก 7 วัน แล้วเลือกเองว่าจะปรับรูทีนตรงไหน')+
-    '<div class="grid"><section class="box"><h2>1. ขอให้ ChatGPT ช่วยทบทวน</h2>'+
+    '<section class="box review-overview"><h2>สรุป 7 วัน</h2>'+week(p)+
+    '<p class="subtle">งานดูแลตัวเองเสร็จ '+other+' งาน · บันทึกผิว '+notes.length+' รายการ</p>'+
+    (checkin?'<p><strong>เช็กอินล่าสุด</strong> '+checkinLabels[checkin.rating]+(checkin.note?' · '+esc(checkin.note):'')+'</p>':'')+
+    (notes.length?'<p><strong>บันทึกล่าสุด</strong> '+esc(notes[0].text)+'</p>':'')+'</section>'+
+    '<div class="grid"><section class="box"><h2>ขอให้ ChatGPT ช่วยทบทวน (ถ้าต้องการ)</h2>'+
     '<p class="subtle">คำถามมีเป้าหมาย รูทีน สถานะงาน และไดอารีล่าสุด อ่านก่อนคัดลอกไปวางใน ChatGPT</p>'+
     '<div class="field"><label for="ai-prompt">คำถามจากบันทึก 7 วัน</label><textarea readonly id="ai-prompt" rows="6">'+esc(reviewPrompt(p))+'</textarea></div>'+
     '<div class="actions"><button type="button" class="btn light small" id="copy-ai">คัดลอกคำถาม</button><a class="btn small" href="https://chatgpt.com/" target="_blank" rel="noopener">เปิด ChatGPT'+icon('arrow')+'</a></div>'+
     '<form id="review-form"><div class="field"><label for="review-reply">วางคำตอบ JSON จาก ChatGPT</label><textarea id="review-reply" name="reply" required maxlength="16000" rows="4"></textarea></div>'+
     '<div class="actions"><button type="submit" class="btn light">ดูข้อเสนอก่อนใช้</button></div></form></section>'+
-    '<section class="box" id="review-result" tabindex="-1"><h2>2. ตรวจและเลือกข้อที่จะใช้</h2>'+
+    '<section class="box" id="review-result" tabindex="-1"><h2>ตรวจและเลือกข้อที่จะใช้</h2>'+
     (result?'<p class="note">'+esc(result.summary)+'</p>':'<p class="subtle">วางคำตอบเพื่อดูสรุปและเทียบรูทีนก่อนกับหลัง</p>')+
     (result?.changes.length ? '<form id="apply-review-form">'+result.changes.map(change=>
       '<article class="body-step"><label class="body-choice"><input type="checkbox" name="change" value="'+change.key+'">'+
@@ -917,9 +1062,9 @@ function goals() {
     (suggested?'<button type="button" class="link-btn" id="suggest-goal">ใช้เป้าหมายจากผลเช็กผิว · '+suggested.label+'</button>':'')+
     '<div class="actions"><button type="submit" class="btn">บันทึกเป้าหมาย</button></div></form></section>'+
     '<section class="box"><h2>ความสม่ำเสมอ 7 วัน</h2><p class="subtle">จำนวนขั้นตอนที่ทำในแต่ละวัน</p>'+week(p)+'<div class="actions"><button class="btn light small" data-page="review">'+icon('sparkle')+'ให้ AI ช่วยทบทวนแผน</button></div></section>'+
-    '<section class="box"><h2>ไดอารีผิว</h2><form id="log-form"><div class="field"><label for="log">วันนี้สังเกตอะไรบ้าง?</label><textarea id="log" name="log" rows="3" maxlength="350" required placeholder="เช่น แก้มตึงน้อยลงหลังทาครีม"></textarea></div><div class="actions"><button class="btn" type="submit">เพิ่มบันทึก</button></div></form>'+
+    weeklyCheckin(p)+'<section class="box"><h2>ไดอารีผิว</h2><form id="log-form"><div class="field"><label for="log">วันนี้สังเกตอะไรบ้าง?</label><textarea id="log" name="log" rows="3" maxlength="350" required placeholder="เช่น แก้มตึงน้อยลงหลังทาครีม"></textarea></div><div class="actions"><button class="btn" type="submit">เพิ่มบันทึก</button></div></form>'+
     '<div style="margin-top:10px">'+p.logs.map(log=>'<article class="log"><small>'+thaiDate(log.date)+'</small><p>'+esc(log.text)+'</p><button class="link-btn" data-delete-log="'+log.id+'">ลบบันทึก</button></article>').join('')+'</div></section></div>'+
-    '<section class="box"><div class="goal-head"><div class="badge-icon mint">'+icon('camera')+'</div><div><h2>รูปติดตามผิว</h2><small>ถ่ายมุมและแสงเดิมเพื่อเปรียบเทียบ</small></div></div><p class="subtle">เก็บได้ 4 รูปต่อคน รูปอยู่ในเบราว์เซอร์นี้และใช้เปรียบเทียบด้วยตัวเอง</p>'+
+    '<section class="box"><div class="goal-head"><div class="badge-icon mint">'+icon('camera')+'</div><div><h2>รูปติดตามผิว</h2><small>ถ่ายมุมและแสงเดิมเพื่อเปรียบเทียบ</small></div></div><p class="subtle">เก็บได้ 4 รูปต่อคน รูปอยู่ในเบราว์เซอร์นี้และใช้เปรียบเทียบด้วยตัวเอง</p>'+comparePhotos(p)+
     '<div class="actions"><button type="button" class="btn light" id="pick-photo" '+(p.photos.length>=4?'disabled':'')+'>'+icon('camera')+'ถ่ายหรือเลือกรูป</button><input id="photo" type="file" accept="image/*" hidden></div>'+
     '<div class="photo-grid">'+p.photos.map(photo=>'<figure><img class="photo" src="'+esc(photo.src)+'" alt="รูปติดตามผิววันที่ '+thaiDate(photo.date)+'"><figcaption><small>'+thaiDate(photo.date)+'</small><button class="link-btn" data-delete-photo="'+photo.id+'">ลบรูป</button></figcaption></figure>').join('')+'</div></section></div>';
 }
@@ -937,10 +1082,10 @@ function profile() {
 }
 
 function render() {
-  const navPage = ({routine:'home',body:'skin',reminders:'calendar',review:'goals'})[page] ?? page;
+  const navPage = ({routine:'home',body:'skin',reminders:'calendar',review:'goals',share:'profile'})[page] ?? page;
   $('nav').innerHTML = Object.entries(routes).filter(([,entry])=>entry).map(([id,[glyph,label]])=>'<button data-page="'+id+'" '+(navPage===id?'class="active" aria-current="page"':'')+'>'+icon(glyph)+label+'</button>').join('');
   $('profiles').innerHTML = state.people.map((p,i)=>'<button data-profile="'+i+'" aria-pressed="'+(state.active===i)+'" class="'+(state.active===i?'active':'')+'" title="'+esc(p.name)+'">'+avatar(p,i)+'<span style="overflow:hidden;text-overflow:ellipsis">'+esc(p.name)+'</span></button>').join('');
-  $('main').innerHTML = ({home,skin,body,calendar,goals,profile,routine,reminders,review})[page]();
+  $('main').innerHTML = ({home,skin,body,calendar,goals,profile,routine,reminders,review,share,shared})[page]();
 }
 
 function beginRoutine() {
@@ -1012,16 +1157,16 @@ function editorClick(btn) {
 document.addEventListener('click', (event) => {
   const btn = event.target.closest('button');
   if (!btn) return;
-  const {page:target,profile:index,step,deleteLog,deletePhoto} = btn.dataset;
+  const {page:target,profile:index,deleteLog,deletePhoto} = btn.dataset;
   if (target) goto(target);
   if (index !== undefined && state.active!==Number(index)) {
     if (page==='routine') goto('home');
     habitDraft = null;
     reviewDraft = null;
-    showCompleted = false;
+    showCompleted = showSkipped = false;
     update(()=>{state.active = Number(index);});
   }
-  const {habit, calendarDate:date, week:jump, preset, editHabit, deleteHabit} = btn.dataset;
+  const {task,skipTask,calendarDate:date,week:jump,preset,editHabit,deleteHabit} = btn.dataset;
   if (btn.id==='start-morning') return startMorning();
   if (btn.id==='undo-morning-start') {
     if (update(()=>{delete current().morningStart;},'คืนเวลารูทีนเช้าของวันนี้แล้ว')) $('start-morning')?.focus();
@@ -1029,6 +1174,7 @@ document.addEventListener('click', (event) => {
   }
   if (btn.id==='apply-skin-plan') return applySkinPlan();
   if (btn.id==='copy-ai') return copyAiPrompt();
+  if (btn.id==='share-progress' || btn.id==='copy-progress') return shareProgress(btn.id==='share-progress');
   if (btn.id==='photo-checkin') {
     calendarDate = dayKey();
     habitDraft = structuredClone(habitPresets.photo);
@@ -1040,7 +1186,7 @@ document.addEventListener('click', (event) => {
     calendarDate = dayKey();
     goto('calendar');
   }
-  if (habit) return toggleHabit(habit);
+  if (task || skipTask) return changeTaskStatus(task || skipTask,skipTask?'skip':'check');
   if (date || jump) {
     calendarDate = date || shiftDate(calendarDate,Number(jump));
     render();
@@ -1064,15 +1210,6 @@ document.addEventListener('click', (event) => {
     return beginRoutine();
   }
   if (page==='routine' && btn.type==='button') return editorClick(btn);
-  if (step) {
-    const p = current(), date = dayKey(), slot = btn.dataset.slot;
-    const isDone = p.days[date]?.[slot]?.includes(step) ?? false;
-    if (update(()=>{
-      const day = p.days[date] ??= {am:[],pm:[]};
-      day[slot] = isDone ? day[slot].filter(key=>key!==step) : [...day[slot],step];
-      refreshDay(p,date);
-    })) focusAfterCheck('[data-slot="'+slot+'"][data-step="'+step+'"]');
-  }
   if (btn.id==='suggest-goal') $('goal').value = concerns[current().answers.concern].label;
   if (btn.id==='backup-export') downloadBackup();
   if (btn.id==='backup-import') $('backup-file').click();
@@ -1105,6 +1242,12 @@ document.addEventListener('submit', (event) => {
       $('skin-result').focus();
     }
   }
+  if (form.id==='checkin-form') {
+    const date = dayKey(), rating = data.get('rating'), note = data.get('note').trim();
+    if (!Object.hasOwn(checkinLabels,rating)) return;
+    update(()=>{(p.checkins ??= {})[weekStart(date)] = {date,rating,note};},'บันทึกเช็กอินแล้ว ♡');
+    return;
+  }
   if (form.id==='goal-form') {
     const goal = data.get('goal').trim();
     if (!goal) return notify('พิมพ์เป้าหมายก่อนบันทึก');
@@ -1123,7 +1266,9 @@ document.addEventListener('submit', (event) => {
 });
 
 document.addEventListener('toggle', (event)=>{
-  if (event.target.classList.contains('timeline-done') && event.target.isConnected) showCompleted = event.target.open;
+  if (!event.target.matches('.timeline .timeline-done') || !event.target.isConnected) return;
+  if (event.target.hasAttribute('data-skipped')) showSkipped = event.target.open;
+  else showCompleted = event.target.open;
 },true);
 
 document.addEventListener('input', (event)=>{
@@ -1197,15 +1342,30 @@ document.addEventListener('change', async (event) => {
   }
 });
 
-window.addEventListener('hashchange',()=>{
+function routeFromHash() {
   const hash = location.hash.slice(1);
-  const target = Object.hasOwn(routes,hash) ? hash : 'home';
-  if (target !== page) goto(target);
+  sharedCounts = sharedProgressHash(hash);
+  return sharedCounts ? 'shared' : Object.hasOwn(routes,hash) ? hash : 'home';
+}
+window.addEventListener('hashchange',()=>{
+  const target = routeFromHash();
+  if (target==='shared') {
+    page = target;
+    render();
+  } else if (target!==page) goto(target);
 });
 $('logoIcon').innerHTML = icon('sparkle');
-const initialPage = location.hash.slice(1);
-page = initialPage!=='routine' && Object.hasOwn(routes,initialPage) ? initialPage : 'home';
+const initialPage = routeFromHash();
+page = initialPage==='routine' ? 'home' : initialPage;
 render();
+if (page!=='shared' && !current().dayTasks?.[dayKey()]) {
+  archiveToday(current());
+  try {
+    localStorage.setItem(storageKey,JSON.stringify(state));
+  } catch {
+    // The app remains usable if browser storage is unavailable.
+  }
+}
 
 if (globalThis.isSecureContext && location.protocol!=='file:' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(()=>{});

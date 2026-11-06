@@ -89,8 +89,6 @@ button:disabled{opacity:.55;cursor:default}
 .calendar-week button strong{font-size:16px}.calendar-week button span{font-size:10px;color:var(--muted)}
 .calendar-week button[aria-pressed=true]{background:#e1eddb;border-color:#819c83;color:var(--green)}
 .calendar-selected{margin-bottom:8px;align-items:center}.calendar-selected h2{font-size:19px}
-.calendar-routine{padding:10px 0;border-bottom:1px solid var(--line);margin-bottom:9px}
-.calendar-routine .choices{gap:5px;margin-top:4px}
 .habit-fields{margin-top:12px}
 .habit-fields select,#skin-budget,#habit-date,#habit-time{width:100%;min-width:0;min-height:44px;border:1px solid #dce3d8;border-radius:10px;background:white;color:var(--ink);padding:7px 9px}
 .habit-toggle .stepicon{background:#e5efdf}.habit-toggle[data-done=true] .step-check{color:var(--green);background:#e1eddb}
@@ -139,6 +137,13 @@ button:disabled{opacity:.55;cursor:default}
 .today-actions{margin-top:10px}
 .morning-control{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding:10px 12px;border:1px solid #d6e3d2;border-radius:12px;background:#f1f7ed}
 .morning-control small{display:block}.morning-control button{flex-shrink:0;min-height:44px}
+.timeline .step-toggle,.calendar-tasks .step-toggle{grid-template-columns:46px minmax(0,1fr) auto}
+.task-status{font-size:11px;font-weight:700;padding:3px 6px;border-radius:999px;background:#f0f3ea;color:#53645a;white-space:nowrap}
+.task-status.done{color:#285338;background:#e3f0e3}.task-status.skipped{color:#6f541d;background:#fbefd4}
+.task-skip{display:flex;margin-left:auto;padding-inline:8px;min-height:44px;font-size:12px}
+.calendar-tasks .stepicon{width:46px;height:46px}
+.compare-photos{margin:12px 0}.compare-photos figcaption{flex-wrap:wrap}
+.review-overview{margin-bottom:14px}
 @media(max-width:460px){.morning-control{align-items:stretch;flex-direction:column;gap:5px}.morning-control .link-btn{align-self:start}}
 .reminder-choice{padding:6px 9px;border:1px solid var(--line);border-radius:10px}
 .reminder-help{padding-inline-start:24px}.reminder-help li{margin:8px 0}
