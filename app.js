@@ -46,6 +46,9 @@ const prefs = {
 const storageKey = 'glow-together.v1';
 const backupFormat = 'glow-together-backup';
 const maxFacePhotos = 30;
+const maxSkinReply = 16000;
+let skinReplyText = '';
+let skinReplyReview = null;
 const newProfile = (name) => ({name, answers:null, goal:'', goalDate:'', days:{}, logs:[], photos:[]});
 let state = {active:0, people:[newProfile('ฉัน'),newProfile('แฟน')]};
 try {
@@ -142,7 +145,8 @@ function readBackup(backup) {
       (p.answers.extraGoal===undefined || string(p.answers.extraGoal,100)) &&
       (p.answers.concern!=='custom' || Boolean(p.answers.extraGoal?.trim())))) &&
     record(p.days) && Object.entries(p.days).every(([key,value])=>date(key) && day(value)) &&
-    Array.isArray(p.logs) && p.logs.every(log=>entry(log) && string(log.text,350)) &&
+    Array.isArray(p.logs) && p.logs.every(log=>entry(log) &&
+      (log.source===undefined ? string(log.text,350) : log.source==='chatgpt' && string(log.text,maxSkinReply))) &&
     Array.isArray(p.photos) && p.photos.length<=maxFacePhotos && p.photos.every(photo=>entry(photo) && jpeg(photo.src) &&
       (photo.note===undefined || string(photo.note,180))) &&
     (p.routine===undefined || plans(p.routine)) &&
@@ -183,6 +187,7 @@ async function restoreBackup(input) {
     return notify('เปิดไฟล์นี้ไม่ได้ กรุณาเลือกไฟล์ .json ที่สำรองจาก Glow Together');
   }
   if (window.confirm('นำเข้าข้อมูลทั้งสองโปรไฟล์หรือไม่? ข้อมูลจากไฟล์จะแทนที่ข้อมูลในแอปนี้')) {
+    clearSkinReply();
     update(() => { state = restored; }, 'นำเข้าข้อมูลทั้งสองโปรไฟล์แล้ว ♡');
   }
 }
@@ -243,6 +248,7 @@ const goto = (pageId) => {
   if (pageId!=='routine') draft = undefined;
   if (pageId!=='home') showCompleted = showSkipped = false;
   if (pageId!=='review') reviewDraft = null;
+  if (pageId!=='skin') clearSkinReply();
   if (pageId!=='calendar') habitDraft = null;
   if (pageId!=='skin' && pageId!=='goals') {
     facePhotoDraft = null;
@@ -469,7 +475,7 @@ function calendar() {
     '</div><div class="calendar-detail-actions">'+
     (calendarDate===today?'<span class="pill">วันนี้</span>':'<button type="button" class="link-btn" data-calendar-date="'+today+'">กลับวันนี้</button>')+
     (monthly?'<button type="button" class="link-btn" id="calendar-back-to-month">↑ ดูทั้งเดือน</button>':'')+'</div></div>'+
-    calendarPhotoDiary(p,calendarDate)+
+    calendarPhotoDiary(p,calendarDate)+calendarSkinReplies(p,calendarDate)+
     (tasks.length?'<ul class="steps calendar-tasks">'+tasks.map(task=>timelineRow(task,false,calendarDate===today)).join('')+'</ul>':
       '<p class="subtle">ไม่มีตารางที่บันทึกไว้สำหรับวันนี้</p>')+
     (calendarDate<today && !p.dayTasks?.[calendarDate]?'<p class="subtle">วันเก่าแสดงเฉพาะงานที่มีประวัติบันทึกไว้</p>':'')+'</section>'+
@@ -758,12 +764,15 @@ function aiPrompt(p) {
     data.budget?'วิธีเลือกซื้อ: '+preferences.budget[data.budget]:'',
     data.current?'ผลิตภัณฑ์ที่ใช้อยู่: '+data.current:'',
     data.avoid?'สิ่งที่เคยมีปัญหา: '+data.avoid:'',
-    'ช่วยเสนอแผนเช้าและก่อนนอนที่เริ่มได้ง่าย บอกลำดับ วิธีใช้ และตัวอย่างคลีนเซอร์ มอยส์เจอไรเซอร์ และกันแดดจากเว็บไซต์ผู้ผลิตในไทย ระบุสิ่งที่ควรตรวจบนฉลาก และสิ่งที่ควรบันทึกเพื่อเทียบผลรายสัปดาห์ ถ้าข้อมูลไม่พอให้ถามก่อน'
+    'ช่วยเสนอแผนเช้าและก่อนนอนเป็นภาษาไทยที่อ่านง่าย บอกลำดับ วิธีใช้ และตัวอย่างคลีนเซอร์ มอยส์เจอไรเซอร์ และกันแดดจากเว็บไซต์ผู้ผลิตในไทย ระบุสิ่งที่ควรตรวจบนฉลาก และสิ่งที่ควรบันทึกเพื่อเทียบผลรายสัปดาห์ ถ้าข้อมูลไม่พอให้ถามก่อน',
+    'ถ้ามีข้อเสนอให้เปลี่ยนเวลาหรือโน้ตของขั้นที่มีอยู่ ให้ปิดท้ายด้วยโค้ดบล็อก JSON หนึ่งบล็อกสำหรับนำไปใช้ในแอป รูปแบบ '+reviewFormat,
+    'ใช้ slot และ id จากรูทีนด้านล่างเท่านั้น ส่งเฉพาะ time (HH:MM) หรือ detail ที่อยากเปลี่ยน หรือทั้งสองอย่าง จำกัด 8 ข้อ อย่าเสนอให้เริ่มยา สารออกฤทธิ์ หรือสูตรฟอกผิว ถ้าไม่มีข้อเสนอให้ส่ง changes เป็น []',
+    'รูทีนปัจจุบัน: '+JSON.stringify(reviewSchedule(p))
   ].filter(Boolean).join('\n');
 }
 function aiCard(p) {
-  return '<details class="ai-card"><summary>'+icon('sparkle')+' ใช้ ChatGPT ช่วยดูรูปและแผน</summary>'+
-    '<p class="subtle">อ่านข้อความก่อนคัดลอก เปิด ChatGPT แล้ววางคำถามและแนบรูปที่คุณเลือกเอง ผลจะอยู่ในแชต แอปนี้เก็บคำตอบแบบสอบถามและรูปไว้ในเครื่อง</p>'+
+  return '<details class="ai-card"><summary>'+icon('sparkle')+' ขอคำแนะนำจาก ChatGPT</summary>'+
+    '<p class="subtle">อ่านคำถามก่อนคัดลอกไป ChatGPT แล้วแนบรูปที่เลือกเอง เมื่อได้คำตอบแล้ว กลับมาวางที่ “วางคำแนะนำ” ด้านล่างได้เลย</p>'+
     '<label for="ai-prompt">คำถามของคุณ</label><textarea readonly id="ai-prompt" rows="5">'+esc(aiPrompt(p))+'</textarea>'+
     '<div class="actions"><button type="button" class="btn light small" id="copy-ai">คัดลอกคำถาม</button><a class="btn small" href="https://chatgpt.com/" target="_blank" rel="noopener">เปิด ChatGPT'+icon('arrow')+'</a></div></details>';
 }
@@ -953,6 +962,13 @@ function calendarPhotoDiary(p,date) {
     '</section>';
 }
 
+function calendarSkinReplies(p,date) {
+  const notes = p.logs.filter(log=>log.source==='chatgpt' && log.date===date);
+  if (!notes.length) return '';
+  return '<section class="calendar-photo-diary"><h3>คำแนะนำที่บันทึกไว้</h3>'+
+    notes.map(log=>'<details class="recommend"><summary>คำแนะนำจาก ChatGPT</summary><p class="skin-reply-note">'+esc(log.text)+'</p></details>').join('')+'</section>';
+}
+
 async function previewFacePhoto(file) {
   const p = current(), date = dayKey(), request = ++facePhotoRequest;
   if (p.photos.length>=maxFacePhotos) return notify('ลบรูปที่ไม่ต้องการก่อนเพิ่มรูปใหม่');
@@ -989,7 +1005,7 @@ function skin() {
     '<fieldset class="field"><legend>3. ตอนนี้อยากดูแลเรื่องไหนก่อน?</legend>'+options('concern',Object.fromEntries(Object.entries(concerns).map(([key,c])=>[key,c.label])),a?.concern)+'</fieldset>'+
     '<div class="field"><label for="skin-extra-goal">อยากดูแลเรื่องอื่นด้วยไหม?</label><textarea id="skin-extra-goal" name="extraGoal" rows="2" maxlength="100" aria-describedby="skin-extra-hint" placeholder="เช่น คอดูคล้ำน้อยลง หรือข้อศอกไม่แห้ง">'+esc(a?.extraGoal)+'</textarea><small id="skin-extra-hint">พิมพ์เพิ่มได้ตามใจ หรือเว้นว่างถ้าเลือกเป้าหมายหลักไว้แล้ว</small></div>'+
     personalFields(p)+'<div class="actions"><button class="btn" type="submit">'+icon('sparkle')+'สร้างแผนของฉัน</button></div></form><p class="note">ผลอิงจากคำตอบของคุณ ใช้เป็นจุดเริ่มต้นในการดูแลผิว หากอาการปวด แสบ หรือผื่นเป็นต่อเนื่อง ควรปรึกษาแพทย์ผิวหนัง</p></section>'+
-    '<section class="box" id="skin-result" tabindex="-1">'+(a ? results(p) : '<span class="badge-icon mint">'+icon('scan')+'</span><h2 style="margin-top:10px">แผนดูแลผิวของคุณ</h2><p class="subtle">ตอบแบบเช็กผิวเพื่อดูผลและคำแนะนำเฉพาะโปรไฟล์ ระหว่างนี้คุณเริ่มติ๊กรูทีนพื้นฐานได้จากหน้า “วันนี้”</p>')+'</section></div>';
+    '<section class="box" id="skin-result" tabindex="-1">'+(a ? results(p)+aiCard(p) : '<span class="badge-icon mint">'+icon('scan')+'</span><h2 style="margin-top:10px">แผนดูแลผิวของคุณ</h2><p class="subtle">ตอบแบบเช็กผิวเพื่อดูผลและคำแนะนำเฉพาะโปรไฟล์ ระหว่างนี้คุณเริ่มติ๊กรูทีนพื้นฐานได้จากหน้า “วันนี้”</p>')+skinReplyCard(p)+'</section></div>';
 }
 function results(p) {
   const a = p.answers;
@@ -1012,7 +1028,7 @@ function results(p) {
     (a.concern==='faceBody'?'<div class="actions"><button type="button" class="btn light small" data-page="body">เปิดแผนผิวกาย'+icon('arrow')+'</button></div><p><a href="'+source+'everyday-care/skin-care-secrets/routine/fade-dark-spots" target="_blank" rel="noopener">เรื่องรอยคล้ำและกันแดด · AAD</a></p>':'')+
     (a.concern==='eyes'?'<p><a href="https://my.clevelandclinic.org/health/symptoms/23128-dark-circles-under-eyes" target="_blank" rel="noopener">สาเหตุของขอบตาคล้ำ · Cleveland Clinic</a></p>':'')+'</details>'+
     exampleCards(p)+'<div class="actions"><button type="button" class="btn small" id="apply-skin-plan">ใช้แผนนี้ในรูทีน'+icon('arrow')+'</button>'+
-    '<button type="button" class="btn light small" id="photo-checkin">ตั้งวันติดตามผิว</button></div>'+aiCard(p)+
+    '<button type="button" class="btn light small" id="photo-checkin">ตั้งวันติดตามผิว</button></div>'+
     '<div class="sources">แหล่งอ้างอิงจาก AAD <a target="_blank" rel="noopener" href="'+source+'everyday-care/skin-care-basics/care/skin-care-budget">พื้นฐานการดูแลผิว</a><a target="_blank" rel="noopener" href="'+source+'everyday-care/sun-protection/shade-clothing-sunscreen/how-to-apply-sunscreen">วิธีทากันแดด</a><a target="_blank" rel="noopener" href="'+source+'diseases/acne/skin-care/tips">การดูแลผิวที่เป็นสิว</a></div>';
 }
 
@@ -1113,24 +1129,28 @@ function week(p) {
 let reviewDraft = null;
 const clockText = (value) => typeof value==='string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 const recurringPlan = (p,slot) => p.routine?.[slot] ?? defaultPlan(p,slot);
+const reviewFormat = '{"summary":"สรุปภาษาไทยไม่เกิน 600 ตัวอักษร","changes":[{"slot":"am","id":"cleanse","time":"07:30","detail":"โน้ตภาษาไทยไม่เกิน 220 ตัวอักษร","reason":"เหตุผลไม่เกิน 160 ตัวอักษร"}]}';
+function reviewSchedule(p) {
+  return Object.keys(periods).flatMap(slot=>{
+    const plan = recurringPlan(p,slot);
+    return plan.items.map(item=>({slot,id:item.id,title:item.title,time:item.time || plan.time,detail:item.detail,product:item.product}));
+  });
+}
 function reviewPrompt(p) {
   const today = dayKey(), start = shiftDate(today,-6);
-  const diary = p.logs.filter(log=>log.date>=start && log.date<=today).slice(0,14);
+  const diary = p.logs.filter(log=>!log.source && log.date>=start && log.date<=today).slice(0,14);
   const counts = weeklyStats(p).map(({key,done,total,recorded,other})=>({
     date:key,routine:recorded?done+'/'+total:'ไม่ได้บันทึก',other
   }));
   const checkin = Object.values(p.checkins ?? {}).filter(entry=>entry.date>=start && entry.date<=today)
     .map(entry=>({date:entry.date,rating:checkinLabels[entry.rating],note:entry.note}));
-  const schedule = Object.keys(periods).flatMap(slot=>{
-    const plan = recurringPlan(p,slot);
-    return plan.items.map(item=>({slot,id:item.id,title:item.title,time:item.time || plan.time,detail:item.detail,product:item.product}));
-  });
+  const schedule = reviewSchedule(p);
   const data = {goal:p.goal || (p.answers?skinGoalLabel(p.answers):''),...(p.answers?{
     skinGoal:skinGoalLabel(p.answers),extraSkinGoal:extraSkinGoal(p.answers)
   }:{}),counts,checkin,diary:diary.map(({date,text})=>({date,text})),schedule};
   return [
     'ช่วยทบทวนรูทีนผิวจากข้อมูล 7 วันด้านล่าง สรุปเฉพาะสิ่งที่บันทึกไว้และระบุถ้าข้อมูลยังไม่พอ',
-    'ตอบเป็น JSON เท่านั้น ใช้รูปแบบ {"summary":"สรุปภาษาไทยไม่เกิน 600 ตัวอักษร","changes":[{"slot":"am","id":"cleanse","time":"07:30","detail":"โน้ตภาษาไทยไม่เกิน 220 ตัวอักษร","reason":"เหตุผลไม่เกิน 160 ตัวอักษร"}]}',
+    'ตอบเป็น JSON เท่านั้น ใช้รูปแบบ '+reviewFormat,
     'เลือกเฉพาะขั้นที่มี slot และ id ตรงกับ schedule แนะนำเปลี่ยนเวลา (HH:MM) หรือโน้ตตามหลักฐานจริง ใส่ได้เพียงอย่างเดียวถ้าอีกอย่างไม่เปลี่ยน จำกัด 8 ข้อ ถ้าคงแผนเดิมให้ส่ง changes เป็น []',
     'อย่าวินิจฉัยจากบันทึกหรือเสนอให้เริ่มยา สารออกฤทธิ์ หรือสูตรฟอกผิว ถ้ามีอาการแสบหรือผื่นต่อเนื่อง ให้กล่าวถึงการปรึกษาแพทย์หรือเภสัชกรใน summary',
     JSON.stringify(data,null,2)
@@ -1171,12 +1191,18 @@ function applyReview(data) {
   const p = current();
   const changes = reviewDraft?.changes.filter(change=>selected.has(change.key)) ?? [];
   if (!changes.length) return notify('เลือกข้อเสนอที่จะใช้ก่อน');
+  if (saveReviewChanges(p,changes)) goto('home');
+}
+function saveReviewChanges(p,changes) {
   if (changes.some(change=>{
     const plan = recurringPlan(p,change.slot);
     const item = plan.items.find(item=>item.id===change.id);
     return !item || (item.time || plan.time)!==change.oldTime || item.detail!==change.oldDetail;
-  })) return notify('รูทีนเปลี่ยนแล้ว กรุณาสร้างคำถามและทบทวนใหม่');
-  if (update(()=>{
+  })) {
+    notify('รูทีนเปลี่ยนแล้ว กรุณาสร้างคำถามและทบทวนใหม่');
+    return false;
+  }
+  return update(()=>{
     const plans = p.routine ??= {};
     for (const change of changes) {
       const plan = plans[change.slot] ??= defaultPlan(p,change.slot);
@@ -1185,13 +1211,80 @@ function applyReview(data) {
       if (change.detail!==undefined) item.detail = change.detail;
     }
     refreshDay(p,dayKey());
-  },'ปรับเฉพาะข้อที่เลือกแล้ว ♡')) goto('home');
+  },'ปรับเฉพาะข้อที่เลือกแล้ว ♡');
+}
+function reviewChangeDetails(change) {
+  return (change.time!==undefined && change.time!==change.oldTime?'<p><strong>เวลา</strong> '+esc(displayTime(change.oldTime))+' → '+esc(displayTime(change.time))+'</p>':'')+
+    (change.detail!==undefined && change.detail!==change.oldDetail?'<p class="subtle"><strong>เดิม</strong> '+esc(change.oldDetail || 'ไม่มีโน้ต')+'</p><p><strong>ข้อเสนอ</strong> '+esc(change.detail)+'</p>':'')+
+    (change.reason?'<p class="subtle">'+esc(change.reason)+'</p>':'');
+}
+function clearSkinReply() {
+  skinReplyText = '';
+  skinReplyReview = null;
+}
+function skinReplyCard(p) {
+  const result = skinReplyReview;
+  const savedToday = p.logs.some(log=>log.source==='chatgpt' && log.date===dayKey());
+  return '<details class="ai-card skin-reply-card"'+(skinReplyText?' open':'')+'><summary>'+icon('sparkle')+' วางคำแนะนำ</summary>'+
+    '<form id="skin-reply-form"><div class="field"><label for="skin-reply">คำตอบจาก ChatGPT</label>'+
+    '<textarea id="skin-reply" name="reply" rows="5" required maxlength="'+maxSkinReply+'" placeholder="แตะค้างแล้วเลือกวาง">'+esc(skinReplyText)+'</textarea></div>'+
+    '<div class="actions"><button type="submit" value="preview" class="btn light">ดูข้อเสนอ</button><button type="submit" value="save" class="btn">บันทึกเป็นโน้ตวันนี้</button></div></form>'+
+    (savedToday?'<button type="button" class="link-btn" data-photo-date="'+dayKey()+'">ดูโน้ตวันนี้ในปฏิทิน'+icon('arrow')+'</button>':'')+
+    '<div id="skin-reply-result" tabindex="-1"'+(result?'':' hidden')+'>'+
+    (result?.summary?'<p class="note">'+esc(result.summary)+'</p>':'')+
+    (result?.changes.length?'<p class="subtle">เลือกลองใช้ทีละข้อกับรูทีนประจำ</p>'+
+      (p.todayRoutine?.date===dayKey()?'<p class="subtle">รูทีนที่ตั้งเฉพาะวันนี้จะใช้ตามตารางเดิม</p>':'')+
+      result.changes.map(change=>'<article class="body-step"><strong>'+esc(change.title)+'</strong> <small>'+periods[change.slot]+'</small>'+
+        reviewChangeDetails(change)+'<button type="button" class="btn light" data-skin-change="'+change.key+'">ลองใช้</button></article>').join(''):
+      result?'<p class="subtle">'+(result.summary?'ไม่มีข้อเสนอใหม่ให้ปรับรูทีน':'คำตอบนี้เก็บเป็นโน้ตได้เลย หากต้องการให้แอปแสดงข้อเสนอ ให้ใช้คำถามล่าสุดจากด้านบน')+'</p>':'')+
+    '</div></details>';
+}
+function submitSkinReply(data, save) {
+  const text = data.get('reply').trim();
+  if (!text || text.length>maxSkinReply) return notify('วางคำแนะนำก่อนดำเนินการ');
+  const p = current();
+  skinReplyText = text;
+  skinReplyReview = {summary:'',changes:[]};
+  const block = text.match(/^[ \t]*```json[ \t]*\r?\n([\s\S]*?)^[ \t]*```[ \t]*$/im) ??
+    text.match(/^```\s*([\s\S]*?)\s*```$/);
+  let note = text;
+  try {
+    const reply = JSON.parse(block?.[1] ?? text);
+    if (typeof reply?.summary==='string' && reply.summary.trim() && Array.isArray(reply.changes)) {
+      const prose = block ? text.replace(block[0],'').trim() : '';
+      note = prose || reply.summary.trim();
+      skinReplyReview = reviewChanges(p,reply);
+    }
+  } catch {
+    // Plain text and replies for an older routine can still be saved.
+  }
+  if (save) {
+    const date = dayKey();
+    if (p.logs.some(log=>log.source==='chatgpt' && log.date===date && log.text===note)) {
+      notify('บันทึกคำแนะนำนี้ไว้แล้ว');
+      render();
+    } else if (!update(()=>{p.logs.unshift({id:crypto.randomUUID(),date,text:note,source:'chatgpt'});},'บันทึกคำแนะนำในปฏิทินแล้ว ♡')) return;
+  } else {
+    render();
+  }
+  $('skin-reply-result').focus();
+}
+function applySkinReplyChange(key) {
+  const change = skinReplyReview?.changes.find(item=>item.key===key);
+  if (!change) return;
+  const previous = skinReplyReview;
+  skinReplyReview = {...previous,changes:previous.changes.filter(item=>item!==change)};
+  if (saveReviewChanges(current(),[change])) {
+    $('skin-reply-result').focus();
+  } else {
+    skinReplyReview = previous;
+  }
 }
 function review() {
   const p = current(), result = reviewDraft;
   const override = p.todayRoutine?.date===dayKey() && Object.keys(periods).some(slot=>p.todayRoutine[slot]);
   const stats = weeklyStats(p), start = stats[0].key, end = stats.at(-1).key;
-  const notes = p.logs.filter(log=>log.date>=start && log.date<=end);
+  const notes = p.logs.filter(log=>!log.source && log.date>=start && log.date<=end);
   const checkin = Object.values(p.checkins ?? {}).filter(entry=>entry.date>=start && entry.date<=end)
     .sort((a,b)=>b.date.localeCompare(a.date))[0];
   const other = stats.reduce((sum,day)=>sum+day.other,0);
@@ -1211,9 +1304,7 @@ function review() {
     (result?.changes.length ? '<form id="apply-review-form">'+result.changes.map(change=>
       '<article class="body-step"><label class="body-choice"><input type="checkbox" name="change" value="'+change.key+'">'+
       '<span><strong>'+esc(change.title)+'</strong><small>'+periods[change.slot]+'</small></span></label>'+
-      (change.time!==undefined && change.time!==change.oldTime?'<p><strong>เวลา</strong> '+esc(displayTime(change.oldTime))+' → '+esc(displayTime(change.time))+'</p>':'')+
-      (change.detail!==undefined && change.detail!==change.oldDetail?'<p class="subtle"><strong>เดิม</strong> '+esc(change.oldDetail || 'ไม่มีโน้ต')+'</p><p><strong>ข้อเสนอ</strong> '+esc(change.detail)+'</p>':'')+
-      (change.reason?'<p class="subtle">'+esc(change.reason)+'</p>':'')+'</article>').join('')+
+      reviewChangeDetails(change)+'</article>').join('')+
       (override?'<p class="note">ข้อเสนอใช้กับรูทีนประจำ ส่วนขั้นที่ตั้งเฉพาะวันนี้จะยังใช้ตามตารางวันนี้</p>':'')+
       '<div class="actions"><button type="submit" class="btn">ใช้ข้อที่เลือกกับรูทีนประจำ</button></div></form>':
       result?'<p class="subtle">ไม่มีข้อเสนอให้แก้รูทีน</p>':'')+'</section></div>';
@@ -1229,7 +1320,9 @@ function goals() {
     '<div class="actions"><button type="submit" class="btn">บันทึกเป้าหมาย</button></div></form></section>'+
     '<section class="box"><h2>ความสม่ำเสมอ 7 วัน</h2><p class="subtle">จำนวนขั้นตอนที่ทำในแต่ละวัน</p>'+week(p)+'<div class="actions"><button class="btn light small" data-page="review">'+icon('sparkle')+'ให้ AI ช่วยทบทวนแผน</button></div></section>'+
     weeklyCheckin(p)+'<section class="box"><h2>ไดอารีผิว</h2><form id="log-form"><div class="field"><label for="log">วันนี้สังเกตอะไรบ้าง?</label><textarea id="log" name="log" rows="3" maxlength="350" required placeholder="เช่น แก้มตึงน้อยลงหลังทาครีม"></textarea></div><div class="actions"><button class="btn" type="submit">เพิ่มบันทึก</button></div></form>'+
-    '<div style="margin-top:10px">'+p.logs.map(log=>'<article class="log"><small>'+thaiDate(log.date)+'</small><p>'+esc(log.text)+'</p><button class="link-btn" data-delete-log="'+log.id+'">ลบบันทึก</button></article>').join('')+'</div></section></div>'+
+    '<div style="margin-top:10px">'+p.logs.map(log=>'<article class="log"><small>'+thaiDate(log.date)+'</small>'+
+      (log.source==='chatgpt'?'<details class="recommend"><summary>คำแนะนำจาก ChatGPT</summary><p class="skin-reply-note">'+esc(log.text)+'</p></details>':'<p>'+esc(log.text)+'</p>')+
+      '<button class="link-btn" data-delete-log="'+log.id+'">ลบบันทึก</button></article>').join('')+'</div></section></div>'+
     '<section class="box"><div class="goal-head"><div class="badge-icon mint">'+icon('camera')+'</div><div><h2>รูปติดตามผิว</h2><small>ถ่ายมุมและแสงเดิมเพื่อเปรียบเทียบ</small></div></div><p class="subtle">เก็บได้ '+maxFacePhotos+' รูปต่อคน รูปอยู่ในเบราว์เซอร์นี้</p>'+comparePhotos(p)+facePhotoEditor(p)+
     (p.photos.length?'<details class="timeline-done"><summary>ดูรูปที่บันทึกทั้งหมด · '+p.photos.length+' รูป</summary>'+
       facePhotoGallery(p.photos,true)+'</details>':'')+'</section></div>';
@@ -1329,6 +1422,7 @@ document.addEventListener('click', (event) => {
     if (page==='routine') goto('home');
     habitDraft = null;
     reviewDraft = null;
+    clearSkinReply();
     facePhotoDraft = null;
     facePhotoRequest++;
     showCompleted = showSkipped = false;
@@ -1342,6 +1436,7 @@ document.addEventListener('click', (event) => {
   }
   if (btn.id==='apply-skin-plan') return applySkinPlan();
   if (btn.id==='copy-ai') return copyAiPrompt();
+  if (btn.dataset.skinChange) return applySkinReplyChange(btn.dataset.skinChange);
   if (btn.id==='share-progress' || btn.id==='copy-progress') return shareProgress(btn.id==='share-progress');
   if (btn.id==='photo-checkin') {
     calendarDate = dayKey();
@@ -1420,6 +1515,7 @@ document.addEventListener('submit', (event) => {
   if (form.id==='face-photo-form') return saveFacePhoto(data.get('note'));
   if (form.id==='reminder-form') return exportReminders(data);
   if (form.id==='review-form') return previewReview(data);
+  if (form.id==='skin-reply-form') return submitSkinReply(data,event.submitter?.value==='save');
   if (form.id==='apply-review-form') return applyReview(data);
   if (form.id==='body-form') {
     if (update(()=>{
@@ -1472,6 +1568,11 @@ document.addEventListener('toggle', (event)=>{
 
 document.addEventListener('input', (event)=>{
   const field = event.target;
+  if (field.id==='skin-reply') {
+    skinReplyText = field.value;
+    skinReplyReview = null;
+    $('skin-reply-result').hidden = true;
+  }
   if (field.id==='face-note' && facePhotoDraft) facePhotoDraft.note = field.value;
   if (!draft || !field.closest('#routine-form')) return;
   if (field.id==='routine-time') draft.plan.time = field.value;
@@ -1552,6 +1653,7 @@ function routeFromHash() {
 window.addEventListener('hashchange',()=>{
   const target = routeFromHash();
   if (target==='shared') {
+    clearSkinReply();
     page = target;
     render();
   } else if (target!==page) goto(target);
