@@ -132,6 +132,8 @@ function readBackup(backup) {
     Array.isArray(p.photos) && p.photos.length<=4 && p.photos.every(photo=>entry(photo) && jpeg(photo.src)) &&
     (p.routine===undefined || plans(p.routine)) &&
     (p.todayRoutine===undefined || (plans(p.todayRoutine) && date(p.todayRoutine.date))) &&
+    (p.morningStart===undefined || (record(p.morningStart) && date(p.morningStart.date) &&
+      clock(p.morningStart.time) && ids(p.morningStart.completed))) &&
     (p.personal===undefined || personal(p.personal)) &&
     (p.bodyPlan===undefined || (record(p.bodyPlan) && Object.hasOwn(bodyGoals,p.bodyPlan.goal) &&
       Object.hasOwn(bodyFeel,p.bodyPlan.feel) && string(p.bodyPlan.avoid,180))) &&
@@ -175,9 +177,29 @@ function defaultPlan(profile, period) {
   if (period==='am') items.push(['spf','ทากันแดด','กันแดด Broad Spectrum SPF 30+','ทาเป็นขั้นสุดท้าย ประมาณ 15 นาทีก่อนออกแดด · '+tips[2]]);
   return {time:period==='am'?'07:00':'21:30',items:items.map(([id,title,product,detail])=>({id,title,product,detail,time:'',photo:''}))};
 }
-function planFor(p, time, date = dayKey()) {
+function basePlanFor(p, time, date) {
   const override = p.todayRoutine?.date===date ? p.todayRoutine[time] : undefined;
   return override ?? p.routine?.[time] ?? defaultPlan(p,time);
+}
+const clockMinutes = (time) => Number(time.slice(0,2))*60+Number(time.slice(3,5));
+const minuteClock = (minutes) => String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
+
+function planFor(p, time, date = dayKey()) {
+  const plan = basePlanFor(p,time,date);
+  const start = p.morningStart;
+  if (time!=='am' || start?.date!==date) return plan;
+  const remaining = plan.items.filter(item=>!start.completed.includes(item.id));
+  if (!remaining.length) return plan;
+  const first = Math.min(...remaining.map(item=>clockMinutes(item.time || plan.time)));
+  const offset = clockMinutes(start.time)-first;
+  return {
+    time:start.time,
+    items:plan.items.map(item=>{
+      const original = item.time || plan.time;
+      const adjusted = start.completed.includes(item.id) ? original : minuteClock(Math.min(1439,clockMinutes(original)+offset));
+      return {...item,time:adjusted};
+    })
+  };
 }
 const plannedKeys = (p, date) => Object.fromEntries(Object.keys(periods).map(time =>
   [time,planFor(p,time,date).items.map(item=>item.id)]));
@@ -439,6 +461,30 @@ function timelineRow(task, next = false) {
     '<span class="step-check" aria-hidden="true">'+(task.checked?icon('check'):'')+'</span></button></li>';
 }
 
+function morningControl(p, date, remaining) {
+  const start = p.morningStart?.date===date ? p.morningStart : null;
+  if (start) {
+    return '<div class="morning-control"><div><strong>เช้านี้เริ่ม '+displayTime(start.time)+'</strong>'+
+      '<small>ใช้กับรูทีนเช้าของวันนี้</small></div>'+
+      '<button type="button" class="link-btn" id="undo-morning-start">คืนเวลาเดิม</button></div>';
+  }
+  if (!remaining.some(task=>task.slot==='am')) return '';
+  return '<div class="morning-control"><div><strong>ตื่นแล้ว เริ่มได้เลย</strong>'+
+    '<small>เลื่อนขั้นเช้าที่ยังเหลือให้เริ่มตอนนี้ เฉพาะวันนี้</small></div>'+
+    '<button type="button" class="btn small" id="start-morning">เริ่มรูทีนเช้าตอนนี้</button></div>';
+}
+
+function startMorning(now = new Date()) {
+  const p = current(), date = dayKey(now);
+  const completed = p.days[date]?.am ?? [];
+  const plan = basePlanFor(p,'am',date);
+  if (p.morningStart?.date===date || plan.items.every(item=>completed.includes(item.id))) return;
+  const time = minuteClock(now.getHours()*60+now.getMinutes());
+  if (update(()=>{p.morningStart = {date,time,completed:[...completed]};},'เริ่มรูทีนเช้าวันนี้ '+displayTime(time))) {
+    $('undo-morning-start')?.focus();
+  }
+}
+
 function home() {
   const date = dayKey();
   const p = current();
@@ -449,6 +495,7 @@ function home() {
     '<h1>วันนี้ของ'+esc(p.name)+' <span aria-hidden="true">♡</span></h1><p class="subtle">เปิดดูงานถัดไป แล้วแตะทั้งแถวเมื่อทำเสร็จ</p></div><img src="ritual.svg" alt=""></div>'+
     '<div class="dash"><section class="box timeline"><div class="section-top"><div><span class="kicker">DAILY CARE</span><h2>ตารางวันนี้</h2></div>'+
     '<span class="pill">'+completed.length+'/'+timeline.length+' งาน</span></div>'+bar(completed.length,timeline.length)+
+    morningControl(p,date,remaining)+
     (remaining.length ? '<ul class="steps">'+remaining.map((task,index)=>timelineRow(task,index===0)).join('')+'</ul>' :
       '<p class="note">ครบทุกงานของวันนี้แล้ว ♡</p>')+
     (completed.length ? '<details class="timeline-done" '+(showCompleted?'open':'')+'><summary>ทำเสร็จแล้ว · '+completed.length+' งาน</summary>'+
@@ -601,7 +648,7 @@ function applySkinPlan() {
   if (update(()=>{
     p.routine = Object.fromEntries(Object.keys(periods).map(time=>{
       const plan = defaultPlan(p,time);
-      plan.time = planFor(p,time).time;
+      plan.time = basePlanFor(p,time,dayKey()).time;
       return [time,plan];
     }));
     delete p.todayRoutine;
@@ -898,8 +945,9 @@ function render() {
 
 function beginRoutine() {
   const p = current();
-  const todayOnly = p.todayRoutine?.date===dayKey() && p.todayRoutine[period];
-  draft = {plan:structuredClone(planFor(p,period)),scope:todayOnly?'today':'daily'};
+  const date = dayKey();
+  const todayOnly = p.todayRoutine?.date===date && p.todayRoutine[period];
+  draft = {plan:structuredClone(basePlanFor(p,period,date)),scope:todayOnly?'today':'daily'};
   goto('routine');
 }
 
@@ -929,6 +977,7 @@ function saveRoutine() {
       (p.routine ??= {})[period] = saved;
       if (p.todayRoutine?.date===date) delete p.todayRoutine[period];
     }
+    if (period==='am' && p.morningStart?.date===date) delete p.morningStart;
     refreshDay(p,date);
   }, 'บันทึกรูทีนแล้ว ♡')) goto('home');
 }
@@ -973,6 +1022,11 @@ document.addEventListener('click', (event) => {
     update(()=>{state.active = Number(index);});
   }
   const {habit, calendarDate:date, week:jump, preset, editHabit, deleteHabit} = btn.dataset;
+  if (btn.id==='start-morning') return startMorning();
+  if (btn.id==='undo-morning-start') {
+    if (update(()=>{delete current().morningStart;},'คืนเวลารูทีนเช้าของวันนี้แล้ว')) $('start-morning')?.focus();
+    return;
+  }
   if (btn.id==='apply-skin-plan') return applySkinPlan();
   if (btn.id==='copy-ai') return copyAiPrompt();
   if (btn.id==='photo-checkin') {
