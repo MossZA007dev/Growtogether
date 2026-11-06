@@ -19,7 +19,7 @@ const icons = {
 const icon = (name) => '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'+icons[name]+'</svg>';
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const $ = (id) => document.getElementById(id);
-const routes = {home:['home','วันนี้'], skin:['scan','เช็กผิว'], calendar:['calendar','ปฏิทิน'], goals:['target','เป้าหมาย'], profile:['user','โปรไฟล์'], body:null, routine:null, reminders:null, review:null, share:null, shared:null};
+const routes = {home:['home','วันนี้'], skin:['scan','เช็กผิว'], cabinet:['cream','ตู้'], calendar:['calendar','ปฏิทิน'], goals:['target','เป้าหมาย'], profile:['user','โปรไฟล์'], body:null, routine:null, reminders:null, review:null, share:null, shared:null};
 const periods = {am:'ตอนเช้า',pm:'ก่อนนอน'};
 const maxSteps = 8;
 const skinTypes = {balanced:'ผิวสมดุล', dry:'ผิวแห้ง', oily:'ผิวมัน', combo:'ผิวผสม', unsure:'ยังไม่แน่ใจ'};
@@ -47,9 +47,13 @@ const storageKey = 'glow-together.v1';
 const backupFormat = 'glow-together-backup';
 const maxFacePhotos = 30;
 const maxSkinReply = 16000;
+const maxCabinetProducts = 18;
+const cabinetKinds = {cleanse:'คลีนเซอร์',moisturize:'มอยส์เจอไรเซอร์',spf:'กันแดด',treatment:'เซรั่ม / ทรีตเมนต์',body:'ผิวกาย',other:'อื่น ๆ'};
+const cabinetChecks = {comfortable:'ผิวสบาย',unsure:'กำลังสังเกต',irritation:'แสบ แดง หรือคัน',breakout:'สิวเพิ่ม'};
 let skinReplyText = '';
 let skinReplyReview = null;
-const newProfile = (name) => ({name, answers:null, goal:'', goalDate:'', days:{}, logs:[], photos:[]});
+let cabinetDraft = null;
+const newProfile = (name) => ({name, answers:null, goal:'', goalDate:'', days:{}, logs:[], photos:[], products:[]});
 let state = {active:0, people:[newProfile('ฉัน'),newProfile('แฟน')]};
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey));
@@ -120,6 +124,7 @@ function readBackup(backup) {
     value.items.length>0 && ids(value.items.map(item=>item?.id)) &&
     value.items.every(item=>string(item.title,60) && item.title.trim() &&
       string(item.product,80) && string(item.detail,220) &&
+      (item.cabinetId===undefined || validId(item.cabinetId)) &&
       (item.time==='' || clock(item.time)) && (item.photo==='' || jpeg(item.photo)));
   const plans = (value) => record(value) && Object.keys(periods).every(time =>
     value[time]===undefined || plan(value[time]));
@@ -166,7 +171,13 @@ function readBackup(backup) {
       string(checkin.note,200)))) &&
     (p.habits===undefined || (uniqueItems(p.habits,schedule) && p.habits.length<=32)) &&
     (p.habitChecks===undefined || (record(p.habitChecks) &&
-      Object.entries(p.habitChecks).every(([key,items])=>date(key) && uniqueItems(items,habitItem))));
+      Object.entries(p.habitChecks).every(([key,items])=>date(key) && uniqueItems(items,habitItem)))) &&
+    (p.products===undefined || (Array.isArray(p.products) && p.products.length<=maxCabinetProducts &&
+      p.products.every(product=>record(product) && validId(product.id) && string(product.name,80) && product.name.trim() &&
+        Object.hasOwn(cabinetKinds,product.kind) && (product.opened==='' || date(product.opened)) &&
+        (product.expires==='' || date(product.expires)) && Object.hasOwn(cabinetChecks,product.check) &&
+        string(product.note,180) && (product.photo==='' || jpeg(product.photo))) &&
+      new Set(p.products.map(product=>product.id)).size===p.products.length));
   const data = backup?.state;
   if (backup?.format!==backupFormat || backup.version!==1 || ![0,1].includes(data?.active) ||
       !Array.isArray(data.people) || data.people.length!==2 || !data.people.every(validProfile)) {
@@ -249,6 +260,7 @@ const goto = (pageId) => {
   if (pageId!=='home') showCompleted = showSkipped = false;
   if (pageId!=='review') reviewDraft = null;
   if (pageId!=='skin') clearSkinReply();
+  if (pageId!=='cabinet') cabinetDraft = null;
   if (pageId!=='calendar') habitDraft = null;
   if (pageId!=='skin' && pageId!=='goals') {
     facePhotoDraft = null;
@@ -269,6 +281,41 @@ function productImage(item) {
   if (item.photo) return '<img class="product-image" src="'+esc(item.photo)+'" alt="">';
   const [background, drawing] = Object.hasOwn(productArt,item.id) ? productArt[item.id] : productArt.cleanse;
   return '<svg class="product-image" viewBox="0 0 52 52" aria-hidden="true"><rect width="52" height="52" rx="13" fill="'+background+'"/>'+drawing+'</svg>';
+}
+function cabinetProductImage(product) {
+  return productImage({id:product.kind,photo:product.photo});
+}
+function newCabinetDraft() {
+  return {id:'',name:'',kind:'cleanse',opened:'',expires:'',check:'unsure',note:'',photo:''};
+}
+function cabinetStatus(product) {
+  if (!product.expires) return {label:'ยังไม่ระบุวันใช้ก่อน',style:'soft'};
+  if (product.expires<dayKey()) return {label:'เลยวันใช้ก่อนแล้ว',style:'expired'};
+  if (product.expires<=shiftDate(dayKey(),30)) return {label:'ใช้ก่อน '+thaiDate(product.expires),style:'soon'};
+  return {label:'ใช้ก่อน '+thaiDate(product.expires),style:'soft'};
+}
+function updateCabinetReferences(profile, product) {
+  const updatePlan = (plan) => {
+    if (!plan) return;
+    plan.items.forEach(item=>{
+      if (item.cabinetId===product.id) {
+        item.product = product.name;
+        item.photo = product.photo;
+      }
+    });
+  };
+  Object.values(profile.routine ?? {}).forEach(updatePlan);
+  Object.values(profile.todayRoutine ?? {}).forEach(plan=>{
+    if (plan?.items) updatePlan(plan);
+  });
+}
+function cabinetProductOptions(profile, item) {
+  const products = profile.products ?? [];
+  if (!products.length) return '<p class="subtle">เพิ่มสินค้าในหน้า “ตู้” ก่อน แล้วกลับมาเลือกใช้ในขั้นตอนนี้ได้</p>';
+  return '<div class="field"><label for="cabinet-product-'+item.id+'">เลือกจากตู้สกินแคร์</label><select id="cabinet-product-'+item.id+'" data-cabinet-select>'+
+    '<option value="">พิมพ์ชื่อเอง</option>'+products.map(product=>
+      '<option value="'+product.id+'" '+(product.id===item.cabinetId?'selected':'')+'>'+esc(product.name)+' · '+cabinetKinds[product.kind]+'</option>').join('')+
+    '</select></div>';
 }
 const displayTime = (time) => time+' น.';
 
@@ -651,7 +698,90 @@ function home() {
       const done = tasks.filter(task=>task.status==='done').length;
       return '<div class="couple-row">'+avatar(person,index)+'<strong>'+esc(person.name)+'</strong>'+bar(done,tasks.length)+'<small>'+done+'/'+tasks.length+'</small></div>';
     }).join('')+'<button type="button" class="link-btn" data-page="share">แชร์ยอด 7 วัน</button></section>'+
-    '<section class="box goal-card"><div class="goal-head"><div class="badge-icon mint">'+icon('target')+'</div><div><span class="kicker">MY SKIN GOAL</span><h3>เป้าหมายของ'+esc(p.name)+'</h3></div></div><p class="subtle">'+esc(p.goal || 'เลือกสิ่งที่อยากให้ผิวค่อย ๆ ดีขึ้น')+'</p><button class="link-btn" data-page="goals">'+(p.goal?'ดูความคืบหน้า':'ตั้งเป้าหมาย')+icon('arrow')+'</button></section></aside></div>';
+    '<section class="box goal-card"><div class="goal-head"><div class="badge-icon mint">'+icon('target')+'</div><div><span class="kicker">MY SKIN GOAL</span><h3>เป้าหมายของ'+esc(p.name)+'</h3></div></div><p class="subtle">'+esc(p.goal || 'เลือกสิ่งที่อยากให้ผิวค่อย ๆ ดีขึ้น')+'</p><button class="link-btn" data-page="goals">'+(p.goal?'ดูความคืบหน้า':'ตั้งเป้าหมาย')+icon('arrow')+'</button></section>'+
+    cabinetSummary(p)+'</aside></div>';
+}
+
+function cabinetSummary(p) {
+  const products = p.products ?? [];
+  const count = products.length;
+  const attention = products.filter(product=>product.expires && product.expires<=shiftDate(dayKey(),30)).length;
+  return '<section class="box cabinet-summary"><div class="goal-head"><div class="badge-icon peach">'+icon('cream')+'</div><div><span class="kicker">MY BEAUTY SHELF</span><h3>ตู้สกินแคร์</h3></div></div>'+
+    '<p class="subtle">'+(count ? 'มี '+count+' ชิ้น'+(attention?' · มี '+attention+' ชิ้นควรเช็กวันใช้ก่อน':'') : 'เก็บสินค้าที่ใช้ พร้อมรูปและผลที่ผิวตอบสนอง')+'</p>'+
+    '<button type="button" class="link-btn" data-page="cabinet">เปิดตู้ของฉัน'+icon('arrow')+'</button></section>';
+}
+
+function cabinet() {
+  const p = current();
+  const products = p.products ?? [];
+  const draft = cabinetDraft ??= newCabinetDraft();
+  const full = products.length>=maxCabinetProducts && !draft.id;
+  return sectionHead('MY BEAUTY SHELF','ตู้สกินแคร์ของ'+esc(p.name),'เก็บของที่ใช้จริง ถ่ายรูปไว้ แล้วเลือกไปใช้ในรูทีนได้')+
+    '<div class="cabinet-hero"><div><span class="kicker">YOUR LITTLE COLLECTION</span><h2>'+products.length+' ชิ้นในตู้</h2><p>เช็กวันใช้ก่อนและสังเกตว่าผิวรู้สึกอย่างไรหลังใช้</p></div>'+icon('cream')+'</div>'+
+    '<div class="grid cabinet-grid"><section class="box cabinet-form" id="cabinet-form-box"><div class="section-top"><div><h2>'+ (draft.id?'แก้ไขสินค้า':'เพิ่มสินค้าในตู้') +'</h2><p class="subtle">รูปช่วยให้หยิบใช้ได้ถูกตัว</p></div>'+
+    (draft.id?'<button type="button" class="link-btn" id="cancel-cabinet-edit">เพิ่มชิ้นใหม่</button>':'')+'</div>'+
+    (full?'<p class="note">เก็บได้ '+maxCabinetProducts+' ชิ้นต่อโปรไฟล์ ลบสินค้าที่ไม่ได้ใช้ก่อนเพิ่มชิ้นใหม่</p>':'')+
+    '<form id="cabinet-form"><div class="cabinet-photo-field">'+cabinetProductImage(draft)+
+      '<div><strong>'+ (draft.photo?'รูปสินค้าแล้ว':'เพิ่มรูปสินค้า') +'</strong><small>ถ่ายขวดหรือหลอดเพื่อจำได้ง่าย</small><div class="actions">'+
+      '<button type="button" class="btn light small" data-cabinet-picker="cabinet-camera"'+(full?' disabled':'')+'>'+icon('camera')+'ถ่ายรูป</button>'+
+      '<button type="button" class="link-btn" data-cabinet-picker="cabinet-library"'+(full?' disabled':'')+'>เลือกรูป</button></div></div></div>'+
+    '<input id="cabinet-camera" type="file" accept="image/*" capture="environment" hidden><input id="cabinet-library" type="file" accept="image/*" hidden>'+
+    '<div class="field"><label for="cabinet-name">ชื่อผลิตภัณฑ์</label><input id="cabinet-name" name="name" data-cabinet-key="name" type="text" required maxlength="80" value="'+esc(draft.name)+'" placeholder="เช่น มอยส์เจอไรเซอร์ที่ใช้ประจำ" '+(full?'disabled':'')+'></div>'+
+    '<div class="editor-settings"><div class="field"><label for="cabinet-kind">ประเภท</label><select id="cabinet-kind" name="kind" data-cabinet-key="kind" '+(full?'disabled':'')+'>'+
+      Object.entries(cabinetKinds).map(([key,label])=>'<option value="'+key+'" '+(draft.kind===key?'selected':'')+'>'+label+'</option>').join('')+
+      '</select></div><div class="field"><label for="cabinet-check">หลังใช้แล้วผิวเป็นอย่างไร?</label><select id="cabinet-check" name="check" data-cabinet-key="check" '+(full?'disabled':'')+'>'+
+      Object.entries(cabinetChecks).map(([key,label])=>'<option value="'+key+'" '+(draft.check===key?'selected':'')+'>'+label+'</option>').join('')+
+      '</select></div></div>'+
+    '<div class="editor-settings"><div class="field"><label for="cabinet-opened">เริ่มใช้เมื่อ</label><input id="cabinet-opened" name="opened" data-cabinet-key="opened" type="date" value="'+esc(draft.opened)+'" '+(full?'disabled':'')+'></div>'+
+      '<div class="field"><label for="cabinet-expires">ใช้ก่อนวันที่</label><input id="cabinet-expires" name="expires" data-cabinet-key="expires" type="date" value="'+esc(draft.expires)+'" '+(full?'disabled':'')+'></div></div>'+
+    '<div class="field"><label for="cabinet-note">โน้ตเล็ก ๆ</label><textarea id="cabinet-note" name="note" data-cabinet-key="note" rows="2" maxlength="180" placeholder="เช่น ชอบเนื้อเบา ใช้ตอนเช้า" '+(full?'disabled':'')+'>'+esc(draft.note)+'</textarea></div>'+
+    '<div class="actions"><button type="submit" class="btn" '+(full?'disabled':'')+'>'+icon('check')+(draft.id?'บันทึกการแก้ไข':'เก็บเข้าตู้')+'</button></div></form></section>'+
+    '<section class="box"><div class="section-top"><div><h2>ของในตู้</h2><p class="subtle">แตะ “เลือกใช้” ตอนแก้รูทีนได้</p></div><span class="pill">'+products.length+'/'+maxCabinetProducts+'</span></div>'+
+    (products.length?'<div class="cabinet-list">'+products.map(product=>{
+      const status = cabinetStatus(product);
+      return '<article class="cabinet-card"><div class="cabinet-card-top">'+cabinetProductImage(product)+'<div><span class="cabinet-kind">'+cabinetKinds[product.kind]+'</span><h3>'+esc(product.name)+'</h3><small>เริ่มใช้ '+(product.opened?thaiDate(product.opened):'ยังไม่ระบุ')+'</small></div></div>'+
+        '<div class="cabinet-tags"><span class="cabinet-status '+status.style+'">'+esc(status.label)+'</span><span class="cabinet-check '+product.check+'">'+cabinetChecks[product.check]+'</span></div>'+
+        (product.note?'<p>'+esc(product.note)+'</p>':'')+
+        '<div class="actions"><button type="button" class="btn light small" data-edit-cabinet="'+product.id+'">แก้ไข</button><button type="button" class="link-btn" data-delete-cabinet="'+product.id+'">ลบ</button></div></article>';
+    }).join('')+'</div>':'<div class="cabinet-empty"><span class="badge-icon mint">'+icon('cream')+'</span><h3>ตู้ยังว่างอยู่</h3><p class="subtle">เริ่มจากของที่ใช้ทุกวันสัก 1–3 ชิ้นก่อนก็พอ</p></div>')+
+    '</section></div>';
+}
+function saveCabinet(data) {
+  const p = current();
+  const draft = cabinetDraft ?? newCabinetDraft();
+  const name = data.get('name').trim();
+  const opened = data.get('opened');
+  const expires = data.get('expires');
+  if (!name) return notify('ใส่ชื่อผลิตภัณฑ์ก่อนเก็บเข้าตู้');
+  if (opened && expires && expires<opened) return notify('วันใช้ก่อนควรอยู่หลังวันเริ่มใช้');
+  const product = {
+    id:draft.id || crypto.randomUUID(), name, kind:data.get('kind'), opened, expires,
+    check:data.get('check'), note:data.get('note').trim(), photo:draft.photo || ''
+  };
+  const products = p.products ?? [];
+  if (!draft.id && products.length>=maxCabinetProducts) return notify('ตู้เก็บได้ '+maxCabinetProducts+' ชิ้นต่อโปรไฟล์');
+  cabinetDraft = null;
+  if (update(()=>{
+    if (draft.id) {
+      p.products = products.map(item=>item.id===product.id ? product : item);
+      updateCabinetReferences(p,product);
+      refreshDay(p,dayKey());
+    } else {
+      (p.products ??= []).unshift(product);
+    }
+  },draft.id?'อัปเดตสินค้าในตู้แล้ว ♡':'เก็บเข้าตู้แล้ว ♡')) {
+    $('cabinet-form-box')?.focus();
+  } else {
+    cabinetDraft = draft;
+  }
+}
+function clearCabinetReferences(profile, productId) {
+  const clearPlan = (plan) => {
+    if (!plan) return;
+    plan.items.forEach(item=>{ if (item.cabinetId===productId) delete item.cabinetId; });
+  };
+  Object.values(profile.routine ?? {}).forEach(clearPlan);
+  Object.values(profile.todayRoutine ?? {}).forEach(plan=>{ if (plan?.items) clearPlan(plan); });
 }
 
 function focusAfterCheck(selector) {
@@ -675,6 +805,7 @@ function routine() {
       '<div class="editor-settings"><div class="field"><label for="title-'+item.id+'">ขั้นตอน</label><input id="title-'+item.id+'" data-key="title" type="text" required maxlength="60" value="'+esc(item.title)+'" placeholder="เช่น ทามอยส์เจอไรเซอร์"></div>'+
       '<div class="field"><label for="time-'+item.id+'">เวลาแยก (ถ้ามี)</label><input id="time-'+item.id+'" data-key="time" type="time" value="'+esc(item.time)+'"></div></div>'+
       '<div class="field"><label for="product-'+item.id+'">ชื่อผลิตภัณฑ์</label><input id="product-'+item.id+'" data-key="product" type="text" maxlength="80" value="'+esc(item.product)+'" placeholder="เช่น ชื่อครีมที่ใช้อยู่"></div>'+
+      cabinetProductOptions(current(),item)+
       '<div class="field"><label for="detail-'+item.id+'">ใช้เมื่อไหร่ และใช้อย่างไร</label><textarea id="detail-'+item.id+'" data-key="detail" rows="2" maxlength="220" placeholder="เช่น ทาหลังล้างหน้าขณะผิวยังหมาด">'+esc(item.detail)+'</textarea></div>'+
       '<div class="actions"><button type="button" class="btn light small" data-pick-product>'+icon('camera')+(item.photo?'เปลี่ยนรูป':'ใส่รูปผลิตภัณฑ์')+'</button>'+
       '<input type="file" accept="image/*" data-product-file hidden>'+
@@ -1344,7 +1475,7 @@ function render() {
   const navPage = ({routine:'home',body:'skin',reminders:'calendar',review:'goals',share:'profile'})[page] ?? page;
   $('nav').innerHTML = Object.entries(routes).filter(([,entry])=>entry).map(([id,[glyph,label]])=>'<button data-page="'+id+'" '+(navPage===id?'class="active" aria-current="page"':'')+'>'+icon(glyph)+label+'</button>').join('');
   $('profiles').innerHTML = state.people.map((p,i)=>'<button data-profile="'+i+'" aria-pressed="'+(state.active===i)+'" class="'+(state.active===i?'active':'')+'" title="'+esc(p.name)+'">'+avatar(p,i)+'<span style="overflow:hidden;text-overflow:ellipsis">'+esc(p.name)+'</span></button>').join('');
-  $('main').innerHTML = ({home,skin,body,calendar,goals,profile,routine,reminders,review,share,shared})[page]();
+  $('main').innerHTML = ({home,skin,cabinet,body,calendar,goals,profile,routine,reminders,review,share,shared})[page]();
 }
 
 function beginRoutine() {
@@ -1403,7 +1534,10 @@ function editorClick(btn) {
       btn.parentElement.querySelector('[data-product-file]').click();
       return;
     }
-    if (btn.hasAttribute('data-remove-product')) items[index].photo = '';
+    if (btn.hasAttribute('data-remove-product')) {
+      delete items[index].cabinetId;
+      items[index].photo = '';
+    }
     if (btn.hasAttribute('data-remove-step') && items.length>1) items.splice(index,1);
     const other = index+Number(btn.dataset.move);
     if (Number.isInteger(other) && other>=0 && other<items.length) {
@@ -1416,13 +1550,14 @@ function editorClick(btn) {
 document.addEventListener('click', (event) => {
   const btn = event.target.closest('button');
   if (!btn) return;
-  const {page:target,profile:index,deleteLog,deletePhoto} = btn.dataset;
+  const {page:target,profile:index,deleteLog,deletePhoto,editCabinet,deleteCabinet} = btn.dataset;
   if (target) goto(target);
   if (index !== undefined && state.active!==Number(index)) {
     if (page==='routine') goto('home');
     habitDraft = null;
     reviewDraft = null;
     clearSkinReply();
+    cabinetDraft = null;
     facePhotoDraft = null;
     facePhotoRequest++;
     showCompleted = showSkipped = false;
@@ -1436,6 +1571,30 @@ document.addEventListener('click', (event) => {
   }
   if (btn.id==='apply-skin-plan') return applySkinPlan();
   if (btn.id==='copy-ai') return copyAiPrompt();
+  if (btn.dataset.cabinetPicker) return $(btn.dataset.cabinetPicker).click();
+  if (btn.id==='cancel-cabinet-edit') {
+    cabinetDraft = null;
+    render();
+    return $('cabinet-name').focus();
+  }
+  if (editCabinet) {
+    cabinetDraft = structuredClone(current().products.find(product=>product.id===editCabinet));
+    render();
+    return $('cabinet-name').focus();
+  }
+  if (deleteCabinet && window.confirm('ลบสินค้านี้ออกจากตู้หรือไม่? รูทีนที่เลือกใช้จะยังเก็บชื่อเดิมไว้')) {
+    const previousDraft = cabinetDraft;
+    cabinetDraft = null;
+    if (update(()=>{
+      current().products = current().products.filter(product=>product.id!==deleteCabinet);
+      clearCabinetReferences(current(),deleteCabinet);
+      refreshDay(current(),dayKey());
+    },'ลบสินค้าออกจากตู้แล้ว')) {
+      return;
+    }
+    cabinetDraft = previousDraft;
+    return;
+  }
   if (btn.dataset.skinChange) return applySkinReplyChange(btn.dataset.skinChange);
   if (btn.id==='share-progress' || btn.id==='copy-progress') return shareProgress(btn.id==='share-progress');
   if (btn.id==='photo-checkin') {
@@ -1516,6 +1675,7 @@ document.addEventListener('submit', (event) => {
   if (form.id==='reminder-form') return exportReminders(data);
   if (form.id==='review-form') return previewReview(data);
   if (form.id==='skin-reply-form') return submitSkinReply(data,event.submitter?.value==='save');
+  if (form.id==='cabinet-form') return saveCabinet(data);
   if (form.id==='apply-review-form') return applyReview(data);
   if (form.id==='body-form') {
     if (update(()=>{
@@ -1574,11 +1734,15 @@ document.addEventListener('input', (event)=>{
     $('skin-reply-result').hidden = true;
   }
   if (field.id==='face-note' && facePhotoDraft) facePhotoDraft.note = field.value;
+  if (field.dataset.cabinetKey && field.closest('#cabinet-form')) {
+    (cabinetDraft ??= newCabinetDraft())[field.dataset.cabinetKey] = field.value;
+  }
   if (!draft || !field.closest('#routine-form')) return;
   if (field.id==='routine-time') draft.plan.time = field.value;
   if (field.id==='routine-scope') draft.scope = field.value;
   if (field.dataset.key) {
     const item = draft.plan.items.find(item=>item.id===field.closest('[data-item]').dataset.item);
+    if (field.dataset.key==='product') delete item.cabinetId;
     item[field.dataset.key] = field.value;
   }
 });
@@ -1619,9 +1783,27 @@ document.addEventListener('change', async (event) => {
     return;
   }
   if (input.id==='backup-file') return restoreBackup(input);
+  if (input.dataset.cabinetKey && input.closest('#cabinet-form')) {
+    (cabinetDraft ??= newCabinetDraft())[input.dataset.cabinetKey] = input.value;
+    return;
+  }
+  if (input.hasAttribute('data-cabinet-select')) {
+    const item = draft?.plan.items.find(step=>step.id===input.closest('[data-item]')?.dataset.item);
+    if (!item) return;
+    const selected = current().products?.find(product=>product.id===input.value);
+    if (selected) {
+      item.cabinetId = selected.id;
+      item.product = selected.name;
+      item.photo = selected.photo;
+    } else {
+      delete item.cabinetId;
+    }
+    return render();
+  }
+  const isCabinetPhoto = input.id==='cabinet-camera' || input.id==='cabinet-library';
   const isProduct = input.hasAttribute('data-product-file');
   const isFace = input.id==='face-camera' || input.id==='face-library';
-  if (!isFace && !isProduct) return;
+  if (!isFace && !isProduct && !isCabinetPhoto) return;
   const file = input.files[0];
   if (!file) return;
   input.value='';
@@ -1629,12 +1811,22 @@ document.addEventListener('change', async (event) => {
     return notify('เลือกไฟล์รูปขนาดไม่เกิน 25 MB');
   }
   if (isFace) return previewFacePhoto(file);
+  if (isCabinetPhoto) {
+    try {
+      (cabinetDraft ??= newCabinetDraft()).photo = await resizedPhoto(file,288,.76,40000);
+      render();
+    } catch {
+      notify('เปิดไฟล์รูปนี้ไม่ได้ ลองเลือกรูปอื่น');
+    }
+    return;
+  }
   const editing = draft;
   const item = isProduct && editing?.plan.items.find(item=>item.id===input.closest('[data-item]').dataset.item);
   if (item) editing.loadingPhoto = (editing.loadingPhoto ?? 0)+1;
   try {
     const photo = await resizedPhoto(file,288);
     if (draft===editing && editing?.plan.items.includes(item)) {
+      delete item.cabinetId;
       item.photo = photo;
       render();
     }
