@@ -40,6 +40,7 @@ const prefs = {
 
 const storageKey = 'glow-together.v1';
 const backupFormat = 'glow-together-backup';
+const maxFacePhotos = 30;
 const newProfile = (name) => ({name, answers:null, goal:'', goalDate:'', days:{}, logs:[], photos:[]});
 let state = {active:0, people:[newProfile('ฉัน'),newProfile('แฟน')]};
 try {
@@ -135,7 +136,8 @@ function readBackup(backup) {
       p.answers.sensitive===(p.answers.reaction==='yes'))) &&
     record(p.days) && Object.entries(p.days).every(([key,value])=>date(key) && day(value)) &&
     Array.isArray(p.logs) && p.logs.every(log=>entry(log) && string(log.text,350)) &&
-    Array.isArray(p.photos) && p.photos.length<=4 && p.photos.every(photo=>entry(photo) && jpeg(photo.src)) &&
+    Array.isArray(p.photos) && p.photos.length<=maxFacePhotos && p.photos.every(photo=>entry(photo) && jpeg(photo.src) &&
+      (photo.note===undefined || string(photo.note,180))) &&
     (p.routine===undefined || plans(p.routine)) &&
     (p.todayRoutine===undefined || (plans(p.todayRoutine) && date(p.todayRoutine.date))) &&
     (p.morningStart===undefined || (record(p.morningStart) && date(p.morningStart.date) &&
@@ -235,6 +237,10 @@ const goto = (pageId) => {
   if (pageId!=='home') showCompleted = showSkipped = false;
   if (pageId!=='review') reviewDraft = null;
   if (pageId!=='calendar') habitDraft = null;
+  if (pageId!=='skin' && pageId!=='goals') {
+    facePhotoDraft = null;
+    facePhotoRequest++;
+  }
   page = pageId;
   if (location.hash !== '#'+page) location.hash = page;
   render();
@@ -386,11 +392,13 @@ function calendar() {
     '<button type="button" class="btn light small" data-week="7" aria-label="สัปดาห์ถัดไป">›</button></div>'+
     '<div class="calendar-week" aria-label="เลือกวัน">'+weekdays.map((label,index)=>{
       const key = shiftDate(start,index), count = calendarTimeline(p,key).length;
-      return '<button type="button" data-calendar-date="'+key+'" aria-label="'+thaiDate(key,{weekday:'long',day:'numeric',month:'long'})+(count?' '+count+' งาน':'')+'" aria-pressed="'+(key===calendarDate)+'">'+
-        '<small>'+label+'</small><strong>'+Number(key.slice(-2))+'</strong><span>'+ (count?count+' งาน':'·') +'</span></button>';
+      const hasPhotos = photosOn(p,key).length>0;
+      return '<button type="button" data-calendar-date="'+key+'" aria-label="'+thaiDate(key,{weekday:'long',day:'numeric',month:'long'})+(count?' '+count+' งาน':'')+(hasPhotos?' มีรูปผิว':'')+'" aria-pressed="'+(key===calendarDate)+'">'+
+        '<small>'+label+'</small><strong>'+Number(key.slice(-2))+'</strong><span>'+(hasPhotos?icon('camera'):'')+(count?count+' งาน':hasPhotos?'รูป':'·')+'</span></button>';
     }).join('')+'</div>'+
     '<div class="section-top calendar-selected"><div><h2>'+thaiDate(calendarDate,{weekday:'long',day:'numeric',month:'long'})+'</h2></div>'+
     (calendarDate===today?'<span class="pill">วันนี้</span>':'<button type="button" class="link-btn" data-calendar-date="'+today+'">กลับวันนี้</button>')+'</div>'+
+    calendarPhotoDiary(p,calendarDate)+
     (tasks.length?'<ul class="steps calendar-tasks">'+tasks.map(task=>timelineRow(task,false,calendarDate===today)).join('')+'</ul>':
       '<p class="subtle">ไม่มีตารางที่บันทึกไว้สำหรับวันนี้</p>')+
     (calendarDate<today && !p.dayTasks?.[calendarDate]?'<p class="subtle">วันเก่าแสดงเฉพาะงานที่มีประวัติบันทึกไว้</p>':'')+'</section>'+
@@ -820,10 +828,88 @@ function applyBodyPlan(data) {
   }
 }
 
+let facePhotoDraft = null;
+let facePhotoRequest = 0;
+const photosOn = (p,date) => p.photos.filter(photo=>photo.date===date);
+
+function facePhotoGallery(photos, canDelete = false) {
+  return '<div class="photo-grid face-photo-grid">'+photos.map(photo=>
+    '<figure><img class="photo" loading="lazy" src="'+esc(photo.src)+'" alt="รูปติดตามผิววันที่ '+thaiDate(photo.date)+'">'+
+    '<figcaption><div><small>'+thaiDate(photo.date)+'</small>'+
+    (photo.note?'<p>'+esc(photo.note)+'</p>':'')+'</div>'+
+    (canDelete?'<button type="button" class="link-btn" data-delete-photo="'+photo.id+'">ลบรูป</button>':'')+
+    '</figcaption></figure>').join('')+'</div>';
+}
+
+function facePhotoEditor(p) {
+  const disabled = p.photos.length>=maxFacePhotos ? ' disabled' : '';
+  const pending = facePhotoDraft;
+  return '<div class="actions face-photo-actions"><button type="button" class="btn" data-face-picker="face-camera"'+disabled+'>'+
+    icon('camera')+'ถ่ายรูป</button><button type="button" class="btn light" data-face-picker="face-library"'+disabled+'>เลือกรูป</button></div>'+
+    '<input id="face-camera" type="file" accept="image/*" capture="user" hidden>'+
+    '<input id="face-library" type="file" accept="image/*" hidden>'+
+    (disabled?'<p class="note">ครบ '+maxFacePhotos+' รูปแล้ว ลบรูปที่ไม่ต้องการในหน้าเป้าหมายก่อนเพิ่มรูปใหม่</p>':'')+
+    (pending?'<form id="face-photo-form" class="face-photo-preview" tabindex="-1">'+
+      '<div class="face-preview-head"><img class="photo" src="'+esc(pending.src)+'" alt="ตัวอย่างรูปก่อนบันทึก">'+
+      '<div><strong>ตัวอย่างรูป</strong><small>'+thaiDate(pending.date)+'</small></div></div>'+
+      '<div class="field"><label for="face-note">ผิววันนี้เป็นอย่างไร? (ไม่บังคับ)</label>'+
+      '<textarea id="face-note" name="note" rows="2" maxlength="180" placeholder="เช่น แก้มแห้งน้อยลง">'+esc(pending.note)+'</textarea></div>'+
+      '<div class="actions"><button type="submit" class="btn">บันทึกรูปผิว</button>'+
+      '<button type="button" class="btn light" id="cancel-face-photo">ยกเลิก</button></div></form>':'');
+}
+
+function skinPhotoDiary(p) {
+  const today = dayKey(), photos = photosOn(p,today);
+  return '<section class="box skin-photo-diary" id="skin-photo-diary"><div class="goal-head">'+
+    '<span class="badge-icon mint">'+icon('camera')+'</span><div><span class="kicker">PHOTO DIARY</span><h2>บันทึกรูปผิววันนี้</h2>'+
+    '<p class="subtle">เก็บรูปและสิ่งที่สังเกตไว้ดูย้อนหลังในปฏิทิน</p></div></div>'+
+    facePhotoEditor(p)+(photos.length?
+      '<div class="face-diary-saved"><strong>บันทึกวันนี้ '+photos.length+' รูป</strong>'+facePhotoGallery(photos.slice(0,1))+'</div>':
+      '<p class="subtle face-diary-saved">วันนี้ยังไม่มีรูปผิว</p>')+
+    '<button type="button" class="link-btn" data-photo-date="'+today+'">ดูรูปวันนี้ในปฏิทิน'+icon('arrow')+'</button>'+
+    '<p class="subtle">รูปเก็บในเบราว์เซอร์ของเครื่องนี้ · '+p.photos.length+'/'+maxFacePhotos+' รูป</p></section>';
+}
+
+function calendarPhotoDiary(p,date) {
+  const photos = photosOn(p,date);
+  if (!photos.length && date>dayKey()) return '';
+  return '<section class="calendar-photo-diary"><div class="section-top"><div><h3>บันทึกรูปผิว</h3></div>'+
+    (photos.length?'<span class="pill">'+photos.length+' รูป</span>':'')+'</div>'+
+    (photos.length?facePhotoGallery(photos):'<p class="subtle">ไม่มีรูปผิวที่บันทึกไว้ในวันนี้</p>')+
+    (date===dayKey()?'<button type="button" class="link-btn" id="calendar-add-face-photo">'+icon('camera')+'เพิ่มรูปผิววันนี้</button>':'')+
+    '</section>';
+}
+
+async function previewFacePhoto(file) {
+  const p = current(), date = dayKey(), request = ++facePhotoRequest;
+  if (p.photos.length>=maxFacePhotos) return notify('ลบรูปที่ไม่ต้องการก่อนเพิ่มรูปใหม่');
+  notify('กำลังเตรียมรูป…');
+  try {
+    const src = await resizedPhoto(file,512,.72,40000);
+    if (request!==facePhotoRequest || p!==current()) return;
+    facePhotoDraft = {src,date,note:facePhotoDraft?.note ?? ''};
+    render();
+    $('face-photo-form').focus();
+  } catch {
+    if (request===facePhotoRequest) notify('เปิดไฟล์รูปนี้ไม่ได้ ลองเลือก JPG หรือ PNG');
+  }
+}
+
+function saveFacePhoto(note) {
+  const p = current(), preview = facePhotoDraft;
+  if (!preview || p.photos.length>=maxFacePhotos) return;
+  facePhotoDraft = null;
+  facePhotoRequest++;
+  const photo = {id:crypto.randomUUID(),date:preview.date,src:preview.src,note:note.trim()};
+  if (!update(()=>{p.photos.unshift(photo);},'บันทึกรูปในปฏิทินแล้ว ♡')) {
+    facePhotoDraft = {...preview,note:note.trim()};
+  }
+}
+
 function skin() {
   const p = current(), a = p.answers;
   return sectionHead('01 / SKIN CHECK','ทำความรู้จักผิวของ'+esc(p.name),'บอกสภาพผิวและเป้าหมาย แล้วรับแผนเช้า–ก่อนนอนที่ใช้เป็นจุดเริ่มต้นได้')+
-    '<div class="box body-entry"><span class="badge-icon mint">'+icon('heart')+'</span><div><h3>อยากดูแลผิวกายด้วย?</h3><p class="subtle">วางแผนให้ผิวชุ่มชื้นหรือสีผิวดูสม่ำเสมอขึ้น</p></div><button class="btn light small" data-page="body">ดูแผนผิวกาย'+icon('arrow')+'</button></div>'+
+    skinPhotoDiary(p)+'<div class="box body-entry"><span class="badge-icon mint">'+icon('heart')+'</span><div><h3>อยากดูแลผิวกายด้วย?</h3><p class="subtle">วางแผนให้ผิวชุ่มชื้นหรือสีผิวดูสม่ำเสมอขึ้น</p></div><button class="btn light small" data-page="body">ดูแผนผิวกาย'+icon('arrow')+'</button></div>'+
     '<div class="grid"><section class="box"><h2>เช็กผิวแบบสั้น ๆ</h2><form id="skin-form">'+
     '<fieldset class="field"><legend>1. ปกติระหว่างวัน ผิวคุณเป็นแบบไหน?</legend>'+options('type',{balanced:'สบายผิว ไม่ค่อยมัน',dry:'ตึงหรือเป็นขุย',oily:'มันทั่วหน้า',combo:'มันเฉพาะหน้าผาก จมูก คาง',unsure:'ยังไม่แน่ใจ'},a?.type)+'</fieldset>'+
     '<fieldset class="field"><legend>2. ใช้ผลิตภัณฑ์ใหม่แล้วแสบ แดง หรือคันง่ายไหม?</legend>'+options('sensitive',{yes:'ค่อนข้างง่าย',no:'ไม่ค่อย',unsure:'ยังไม่แน่ใจ'},a?.reaction)+'</fieldset>'+
@@ -1064,9 +1150,9 @@ function goals() {
     '<section class="box"><h2>ความสม่ำเสมอ 7 วัน</h2><p class="subtle">จำนวนขั้นตอนที่ทำในแต่ละวัน</p>'+week(p)+'<div class="actions"><button class="btn light small" data-page="review">'+icon('sparkle')+'ให้ AI ช่วยทบทวนแผน</button></div></section>'+
     weeklyCheckin(p)+'<section class="box"><h2>ไดอารีผิว</h2><form id="log-form"><div class="field"><label for="log">วันนี้สังเกตอะไรบ้าง?</label><textarea id="log" name="log" rows="3" maxlength="350" required placeholder="เช่น แก้มตึงน้อยลงหลังทาครีม"></textarea></div><div class="actions"><button class="btn" type="submit">เพิ่มบันทึก</button></div></form>'+
     '<div style="margin-top:10px">'+p.logs.map(log=>'<article class="log"><small>'+thaiDate(log.date)+'</small><p>'+esc(log.text)+'</p><button class="link-btn" data-delete-log="'+log.id+'">ลบบันทึก</button></article>').join('')+'</div></section></div>'+
-    '<section class="box"><div class="goal-head"><div class="badge-icon mint">'+icon('camera')+'</div><div><h2>รูปติดตามผิว</h2><small>ถ่ายมุมและแสงเดิมเพื่อเปรียบเทียบ</small></div></div><p class="subtle">เก็บได้ 4 รูปต่อคน รูปอยู่ในเบราว์เซอร์นี้และใช้เปรียบเทียบด้วยตัวเอง</p>'+comparePhotos(p)+
-    '<div class="actions"><button type="button" class="btn light" id="pick-photo" '+(p.photos.length>=4?'disabled':'')+'>'+icon('camera')+'ถ่ายหรือเลือกรูป</button><input id="photo" type="file" accept="image/*" hidden></div>'+
-    '<div class="photo-grid">'+p.photos.map(photo=>'<figure><img class="photo" src="'+esc(photo.src)+'" alt="รูปติดตามผิววันที่ '+thaiDate(photo.date)+'"><figcaption><small>'+thaiDate(photo.date)+'</small><button class="link-btn" data-delete-photo="'+photo.id+'">ลบรูป</button></figcaption></figure>').join('')+'</div></section></div>';
+    '<section class="box"><div class="goal-head"><div class="badge-icon mint">'+icon('camera')+'</div><div><h2>รูปติดตามผิว</h2><small>ถ่ายมุมและแสงเดิมเพื่อเปรียบเทียบ</small></div></div><p class="subtle">เก็บได้ '+maxFacePhotos+' รูปต่อคน รูปอยู่ในเบราว์เซอร์นี้</p>'+comparePhotos(p)+facePhotoEditor(p)+
+    (p.photos.length?'<details class="timeline-done"><summary>ดูรูปที่บันทึกทั้งหมด · '+p.photos.length+' รูป</summary>'+
+      facePhotoGallery(p.photos,true)+'</details>':'')+'</section></div>';
 }
 function profile() {
   const installHelp = location.protocol==='https:' && !navigator.standalone
@@ -1163,6 +1249,8 @@ document.addEventListener('click', (event) => {
     if (page==='routine') goto('home');
     habitDraft = null;
     reviewDraft = null;
+    facePhotoDraft = null;
+    facePhotoRequest++;
     showCompleted = showSkipped = false;
     update(()=>{state.active = Number(index);});
   }
@@ -1213,7 +1301,18 @@ document.addEventListener('click', (event) => {
   if (btn.id==='suggest-goal') $('goal').value = concerns[current().answers.concern].label;
   if (btn.id==='backup-export') downloadBackup();
   if (btn.id==='backup-import') $('backup-file').click();
-  if (btn.id==='pick-photo') $('photo').click();
+  if (btn.dataset.facePicker) $(btn.dataset.facePicker).click();
+  if (btn.id==='cancel-face-photo') {
+    facePhotoDraft = null;
+    facePhotoRequest++;
+    render();
+    document.querySelector('[data-face-picker="face-camera"]')?.focus();
+  }
+  if (btn.dataset.photoDate) {
+    calendarDate = btn.dataset.photoDate;
+    goto('calendar');
+  }
+  if (btn.id==='calendar-add-face-photo') goto('skin');
   if (deleteLog && window.confirm('ลบบันทึกนี้ใช่ไหม?')) update(()=>{current().logs = current().logs.filter(log=>log.id!==deleteLog);},'ลบบันทึกแล้ว');
   if (deletePhoto && window.confirm('ลบรูปนี้ใช่ไหม?')) update(()=>{current().photos = current().photos.filter(photo=>photo.id!==deletePhoto);},'ลบรูปแล้ว');
 });
@@ -1224,6 +1323,7 @@ document.addEventListener('submit', (event) => {
   if (form.id==='routine-form') return saveRoutine();
   const data = new FormData(form), p = current();
   if (form.id==='habit-form') return saveHabit(data);
+  if (form.id==='face-photo-form') return saveFacePhoto(data.get('note'));
   if (form.id==='reminder-form') return exportReminders(data);
   if (form.id==='review-form') return previewReview(data);
   if (form.id==='apply-review-form') return applyReview(data);
@@ -1273,6 +1373,7 @@ document.addEventListener('toggle', (event)=>{
 
 document.addEventListener('input', (event)=>{
   const field = event.target;
+  if (field.id==='face-note' && facePhotoDraft) facePhotoDraft.note = field.value;
   if (!draft || !field.closest('#routine-form')) return;
   if (field.id==='routine-time') draft.plan.time = field.value;
   if (field.id==='routine-scope') draft.scope = field.value;
@@ -1282,21 +1383,26 @@ document.addEventListener('input', (event)=>{
   }
 });
 
-async function resizedPhoto(file, size) {
+async function resizedPhoto(file, size, quality = .78, maxLength = Infinity) {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
     img.src = url;
     await img.decode();
     const canvas = document.createElement('canvas');
-    const scale = Math.min(1, size/Math.max(img.width,img.height));
-    canvas.width = Math.max(1,Math.round(img.width*scale));
-    canvas.height = Math.max(1,Math.round(img.height*scale));
-    const context = canvas.getContext('2d');
-    context.fillStyle = '#fff';
-    context.fillRect(0,0,canvas.width,canvas.height);
-    context.drawImage(img,0,0,canvas.width,canvas.height);
-    return canvas.toDataURL('image/jpeg',.78);
+    let scale = Math.min(1, size/Math.max(img.width,img.height));
+    let result;
+    do {
+      canvas.width = Math.max(1,Math.round(img.width*scale));
+      canvas.height = Math.max(1,Math.round(img.height*scale));
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#fff';
+      context.fillRect(0,0,canvas.width,canvas.height);
+      context.drawImage(img,0,0,canvas.width,canvas.height);
+      result = canvas.toDataURL('image/jpeg',quality);
+      scale *= .8;
+    } while (result.length>maxLength && Math.max(canvas.width,canvas.height)>120);
+    return result;
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -1314,27 +1420,24 @@ document.addEventListener('change', async (event) => {
   }
   if (input.id==='backup-file') return restoreBackup(input);
   const isProduct = input.hasAttribute('data-product-file');
-  if (input.id!=='photo' && !isProduct) return;
-  const file = input.files[0], index = state.active;
+  const isFace = input.id==='face-camera' || input.id==='face-library';
+  if (!isFace && !isProduct) return;
+  const file = input.files[0];
   if (!file) return;
   input.value='';
   if ((file.type && !file.type.startsWith('image/')) || file.size>25*1024*1024) {
     return notify('เลือกไฟล์รูปขนาดไม่เกิน 25 MB');
   }
+  if (isFace) return previewFacePhoto(file);
   const editing = draft;
   const item = isProduct && editing?.plan.items.find(item=>item.id===input.closest('[data-item]').dataset.item);
   if (item) editing.loadingPhoto = (editing.loadingPhoto ?? 0)+1;
   try {
-    const photo = await resizedPhoto(file,isProduct?288:720);
-    if (isProduct) {
-      if (draft===editing && editing?.plan.items.includes(item)) {
-        item.photo = photo;
-        render();
-      }
-      return;
+    const photo = await resizedPhoto(file,288);
+    if (draft===editing && editing?.plan.items.includes(item)) {
+      item.photo = photo;
+      render();
     }
-    if (state.people[index].photos.length>=4) return notify('เก็บรูปได้ 4 รูปต่อโปรไฟล์');
-    update(()=>{state.people[index].photos.unshift({id:crypto.randomUUID(),date:dayKey(),src:photo});},'บันทึกรูปในเครื่องแล้ว');
   } catch {
     notify('เปิดไฟล์รูปนี้ไม่ได้ ลองเลือกรูปอื่น');
   } finally {
