@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 320">
+<defs>
+<linearGradient id="bg"><stop stop-color="#e4eddd"/><stop offset="1" stop-color="#dce8d4"/></linearGradient>
+<linearGradient id="tube" x2="1" y2=".12"><stop stop-color="#f7d3bd"/><stop offset=".32" stop-color="#ffecd9"/><stop offset=".7" stop-color="#f6d4bb"/><stop offset="1" stop-color="#dfa789"/></linearGradient>
+<linearGradient id="jar"><stop stop-color="#789879"/><stop offset=".28" stop-color="#adc3a1"/><stop offset=".65" stop-color="#a4bd99"/><stop offset="1" stop-color="#638464"/></linearGradient>
+<linearGradient id="cap"><stop stop-color="#315744"/><stop offset=".5" stop-color="#597861"/><stop offset="1" stop-color="#254737"/></linearGradient>
+<linearGradient id="stage" x2="0" y2="1"><stop stop-color="#bacfb4"/><stop offset="1" stop-color="#90ad8f"/></linearGradient>
+<radialGradient id="halo"><stop stop-color="#fff9e3"/><stop offset="1" stop-color="#f2f0d8"/></radialGradient>
+<filter id="soft"><feGaussianBlur stdDeviation="8"/></filter>
+<pattern id="lines" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M1 0v4" stroke="#fff" opacity=".1"/></pattern>
+</defs>
+<path fill="url(#bg)" d="M0 0h620v320H0z"/>
+<circle cx="405" cy="147" r="123" fill="url(#halo)" opacity=".85"/>
+<circle cx="405" cy="147" r="140" fill="none" stroke="#fff9e6" opacity=".7"/>
+<path d="M163 270c30-26 85-39 158-39 72 0 172 22 247 25l52 22v42H121z" fill="#d0dfc7"/>
+<ellipse cx="409" cy="284" rx="166" ry="22" fill="#344d37" opacity=".16" filter="url(#soft)"/>
+<path d="M251 257h292v26c0 15-65 24-146 24s-146-9-146-24z" fill="url(#stage)"/>
+<ellipse cx="397" cy="257" rx="146" ry="24" fill="#c3d8ba"/>
+<ellipse cx="403" cy="255" rx="112" ry="12" fill="#3e5540" opacity=".25" filter="url(#soft)"/>
+<g transform="translate(315 60) rotate(-12 56 99)">
+<path d="M8 11h97l-9 137q-2 18-16 21H30q-14-3-16-20z" fill="url(#tube)" stroke="#e4b39b"/>
+<rect x="7" y="3" width="99" height="13" rx="3" fill="#f8d7c1"/>
+<path d="M12 10h88" stroke="#ce9e86" stroke-dasharray="1 2"/>
+<rect x="27" y="166" width="58" height="29" rx="6" fill="#f7eee0" stroke="#e0c9b6"/>
+<rect x="31" y="170" width="50" height="20" rx="2" fill="url(#lines)"/>
+<rect x="23" y="53" width="66" height="70" rx="4" fill="#fff7e8" opacity=".84"/>
+<path d="M56 58q0 12 11 14-11 2-11 14-1-12-12-14 11-2 12-14z" fill="#b57d61"/>
+<text x="56" y="99" font-size="13" text-anchor="middle" font-family="Georgia" font-style="italic" fill="#694b3e">soft glow</text>
+<text x="56" y="111" font-size="5" letter-spacing="1.1" text-anchor="middle" font-family="sans-serif" fill="#694b3e">DAILY CLEANSER</text>
+</g>
+<g transform="translate(408 159) rotate(7 57 47)">
+<path d="M5 33h108v58c0 10-108 10-108 0z" fill="url(#jar)" stroke="#809d7c"/>
+<rect x="1" y="14" width="116" height="27" rx="7" fill="url(#cap)"/>
+<rect x="4" y="19" width="110" height="16" rx="3" fill="url(#lines)"/>
+<ellipse cx="59" cy="15" rx="54" ry="8" fill="#68856a"/>
+<rect x="20" y="49" width="78" height="33" rx="3" fill="#e9edda"/>
+<text x="59" y="64" font-size="13" text-anchor="middle" font-family="Georgia" font-style="italic" fill="#36523c">skin cloud</text>
+<text x="59" y="74" font-size="5" letter-spacing="1.2" text-anchor="middle" font-family="sans-serif" fill="#36523c">MOISTURE CREAM</text>
+</g>
+<g fill="#fffdf1"><path d="M252 97q1 14 14 15-13 2-14 15-2-13-15-15 13-1 15-15z"/><path d="M495 65q1 14 14 15-13 2-14 15-2-13-15-15 13-1 15-15z"/><path d="M540 122q1 8 9 9-8 1-9 9-1-8-9-9 8-1 9-9z"/><circle cx="274" cy="75" r="3"/><circle cx="526" cy="101" r="2"/></g>
+<g transform="translate(542 250) rotate(-20)"><path d="M0 9Q-8-34 1-56M0 4q-20-20-35-23M0-3q18-21 27-26" fill="none" stroke="#748d70" stroke-width="1.3"/><path d="M0-35q-16-8-12-23 13 7 12 23M0-42q2-17 15-19-1 13-15 19M-10-7q-19 1-25-12 15 0 25 12M11-16q1-15 16-15-4 13-16 15" fill="#92ae88"/></g>
+<g transform="translate(272 238)" fill="#fff2d5"><circle cx="0" cy="-6" r="5"/><circle cx="6" cy="-1" r="5"/><circle cx="3" cy="6" r="5"/><circle cx="-4" cy="5" r="5"/><circle cx="-6" cy="-2" r="5"/><circle r="4" fill="#d9a65e"/></g>
+</svg>

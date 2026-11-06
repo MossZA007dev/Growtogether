@@ -1,0 +1,1158 @@
+'use strict';
+
+const icons = {
+  sparkle:'<path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10Z"/><path d="M19 3v4m-2-2h4"/>',
+  home:'<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-6h6v6"/>',
+  scan:'<path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3M9 10h.01m6 0h.01m-6 5q3 3 6 0"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  user:'<circle cx="12" cy="8" r="3.4"/><path d="M5 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/>',
+  heart:'<path d="M20.8 4.6a5 5 0 0 0-7.1 0L12 6.3l-1.7-1.7a5 5 0 0 0-7.1 7.1l8.8 8.8 8.8-8.8a5 5 0 0 0 0-7.1Z"/>',
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/>',
+  moon:'<path d="M20.9 13.4A9 9 0 0 1 10.6 3.1 9 9 0 1 0 20.9 13.4Z"/>',
+  drop:'<path d="M12 3C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-12Z"/><path d="M8 15a4 4 0 0 0 3 4"/>',
+  cream:'<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M6 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2M4 12h16m-10 4h4"/>',
+  check:'<path d="m5 12 4 4L19 6"/>',
+  arrow:'<path d="M4 12h15m-6-6 6 6-6 6"/>',
+  camera:'<path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="3"/>'
+};
+const icon = (name) => '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'+icons[name]+'</svg>';
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
+const $ = (id) => document.getElementById(id);
+const routes = {home:['home','วันนี้'], skin:['scan','เช็กผิว'], calendar:['calendar','ปฏิทิน'], goals:['target','เป้าหมาย'], profile:['user','โปรไฟล์'], body:null, routine:null, reminders:null, review:null};
+const periods = {am:'ตอนเช้า',pm:'ก่อนนอน'};
+const maxSteps = 8;
+const skinTypes = {balanced:'ผิวสมดุล', dry:'ผิวแห้ง', oily:'ผิวมัน', combo:'ผิวผสม', unsure:'ยังไม่แน่ใจ'};
+const concerns = {
+  glow:{label:'ผิวดูชุ่มชื้น ฉ่ำใส', message:'ถ่ายรูปในแสงเดิมสัปดาห์ละครั้งและจดว่าผิวตึงน้อยลงไหม', detail:'เริ่มจากมอยส์เจอไรเซอร์ที่ใช้ได้สม่ำเสมอและกันแดดทุกเช้า เลือกเนื้อสัมผัสที่ชอบแล้วสังเกตว่าผิวรู้สึกสบายขึ้นไหม'},
+  moisture:{label:'ผิวชุ่มชื้น', message:'สังเกตว่าผิวตึงหรือลอกน้อยลงหลังล้างหน้า', detail:'เลือกมอยส์เจอไรเซอร์ที่มีกลีเซอรีนหรือเซราไมด์ ทาบนผิวหมาดเพื่อกักความชุ่มชื้น ถ้ายังตึง ให้ลองเนื้อครีมเฉพาะบริเวณแห้ง'},
+  acne:{label:'สิวลดลง', message:'สังเกตว่ามีสิวใหม่ลดลงจากสัปดาห์ก่อนหรือไม่', detail:'เลือกสูตรระบุว่า non-comedogenic ล้างหน้าเบา ๆ และเลี่ยงการสครับหรือบีบสิว หากสิวยังขึ้นต่อเนื่อง ปวด หรือทิ้งแผลเป็น ให้ปรึกษาแพทย์ผิวหนังเพื่อเลือกการรักษา'},
+  spots:{label:'รอยดูจางลง', message:'ถ่ายรูปสัปดาห์ละครั้งด้วยแสงและมุมเดิมเพื่อเทียบรอย', detail:'ใช้กันแดด broad spectrum SPF 30 ขึ้นไปทุกเช้า กันแดดแบบมีสีที่มี iron oxides เป็นอีกตัวเลือกสำหรับรอยคล้ำ ทาซ้ำทุก 2 ชั่วโมงขณะอยู่กลางแจ้งและหลังว่ายน้ำหรือเหงื่อออก'},
+  calm:{label:'ผิวระคายเคืองน้อยลง', message:'จดว่าผิวแสบ แดง หรือคันหลังใช้ผลิตภัณฑ์ตัวไหน', detail:'เลือกคลีนเซอร์และมอยส์เจอไรเซอร์ที่ระบุว่า fragrance-free เริ่มทีละตัวและทดสอบกับผิวบริเวณเล็ก ๆ ก่อน งดสครับหรือผลัดเซลล์ผิวช่วงที่ระคายเคือง'}
+};
+const prefs = {
+  dry:['คลีนเซอร์เนื้อครีมหรือโลชันที่อ่อนโยน ล้างแล้วไม่ตึง','มอยส์เจอไรเซอร์เนื้อครีมที่มีกลีเซอรีนหรือเซราไมด์','กันแดดเนื้อโลชันที่ให้ความชุ่มชื้น'],
+  oily:['คลีนเซอร์เจลอ่อนโยน ใช้ปลายนิ้วล้างและซับเบา ๆ','มอยส์เจอไรเซอร์เนื้อเจลหรือโลชันบางเบา สูตร non-comedogenic','กันแดดเนื้อบางเบา สูตร non-comedogenic'],
+  combo:['คลีนเซอร์อ่อนโยนที่ใช้ได้ทั้งแก้มและทีโซน','โลชันเนื้อเบาทั่วหน้า เพิ่มครีมเฉพาะบริเวณที่แห้ง','กันแดดเนื้อโลชันบางเบาที่เกลี่ยได้ทั่วหน้า'],
+  balanced:['คลีนเซอร์อ่อนโยนที่ล้างแล้วผิวสบาย','มอยส์เจอไรเซอร์เนื้อโลชันที่ผิวรู้สึกสบาย','กันแดดเนื้อที่ใช้ได้สม่ำเสมอ'],
+  unsure:['คลีนเซอร์อ่อนโยน ลองสังเกตความตึงหรือมันหลังล้าง','มอยส์เจอไรเซอร์สูตรเรียบง่าย เริ่มจากเนื้อโลชัน','กันแดดเนื้อที่ผิวรู้สึกสบาย']
+};
+
+const storageKey = 'glow-together.v1';
+const backupFormat = 'glow-together-backup';
+const newProfile = (name) => ({name, answers:null, goal:'', goalDate:'', days:{}, logs:[], photos:[]});
+let state = {active:0, people:[newProfile('ฉัน'),newProfile('แฟน')]};
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey));
+  if (saved?.people?.length === 2) state = saved;
+} catch {}
+let period = 'am';
+let page = 'home';
+let toastTimer;
+let draft;
+let showCompleted = false;
+const current = () => state.people[state.active];
+const dayKey = (date = new Date()) => [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+const thaiDate = (key, options = {day:'numeric',month:'long'}) => new Intl.DateTimeFormat('th-TH',options).format(new Date(key+'T12:00:00'));
+const avatar = (profile, index) => '<span class="avatar '+(index ? 'other':'')+'">'+esc(Array.from(profile.name)[0])+'</span>';
+const bar = (value, total = 5) => '<div class="progress" role="progressbar" aria-label="ขั้นตอนที่ทำแล้ว" aria-valuemin="0" aria-valuemax="'+total+'" aria-valuenow="'+value+'"><i style="width:'+Math.round(value/total*100)+'%"></i></div>';
+const validId = (id) => typeof id==='string' && /^[a-z0-9-]{1,64}$/i.test(id);
+const jpeg = (value) => typeof value==='string' && /^data:image\/jpeg;base64,[a-z0-9+/]+=*$/i.test(value);
+
+function notify(message) {
+  $('toast').textContent = message;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $('toast').textContent = ''; }, 3300);
+}
+function update(change, message) {
+  const previous = structuredClone(state);
+  change();
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  } catch {
+    state = previous;
+    notify('บันทึกไม่ได้ พื้นที่ของเบราว์เซอร์อาจเต็มหรือถูกปิดใช้งาน');
+    return false;
+  }
+  render();
+  if (message) notify(message);
+  return true;
+}
+function downloadBackup() {
+  downloadFile(JSON.stringify({format:backupFormat,version:1,state}),'application/json','Glow-Together-Backup-'+dayKey()+'.json');
+}
+function downloadFile(contents, type, filename) {
+  const blob = new Blob([contents], {type});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function readBackup(backup) {
+  const date = (value) => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(value+'T12:00:00'));
+  const string = (value, max) => typeof value==='string' && value.length<=max;
+  const record = (value) => value && typeof value==='object' && !Array.isArray(value);
+  const entry = (value) => record(value) && validId(value.id) && date(value.date);
+  const ids = (items) => Array.isArray(items) && items.length<=maxSteps && items.every(validId) &&
+    new Set(items).size===items.length;
+  const day = (value) => record(value) && Object.keys(periods).every(time => ids(value[time])) &&
+    (value.planned===undefined || (record(value.planned) &&
+      Object.keys(periods).every(time => ids(value.planned[time]) && value.planned[time].length)));
+  const clock = (value) => typeof value==='string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+  const plan = (value) => record(value) && clock(value.time) && Array.isArray(value.items) &&
+    value.items.length>0 && ids(value.items.map(item=>item?.id)) &&
+    value.items.every(item=>string(item.title,60) && item.title.trim() &&
+      string(item.product,80) && string(item.detail,220) &&
+      (item.time==='' || clock(item.time)) && (item.photo==='' || jpeg(item.photo)));
+  const plans = (value) => record(value) && Object.keys(periods).every(time =>
+    value[time]===undefined || plan(value[time]));
+  const habitItem = (h) => record(h) && validId(h.id) && string(h.title,60) && h.title.trim() &&
+    (h.time==='' || clock(h.time)) && string(h.detail,160);
+  const schedule = (h) => habitItem(h) && date(h.since) && Array.isArray(h.days) &&
+    (h.once ? date(h.once) && !h.days.length :
+      h.once==='' && h.days.length>0 && new Set(h.days).size===h.days.length &&
+      h.days.every(day=>allWeekdays.includes(day)));
+  const uniqueItems = (items,test) => Array.isArray(items) && items.every(test) &&
+    new Set(items.map(h=>h.id)).size===items.length;
+  const personal = (p) => record(p) && Object.entries(preferences).every(([key,values])=>
+    Object.hasOwn(values,p[key])) && string(p.current,180) && string(p.avoid,180);
+  const validProfile = (p) => record(p) && string(p.name,24) && p.name.trim() &&
+    string(p.goal,100) && (p.goalDate==='' || date(p.goalDate)) &&
+    (p.answers===null || (record(p.answers) && Object.hasOwn(skinTypes,p.answers.type) &&
+      Object.hasOwn(concerns,p.answers.concern) && ['yes','no','unsure'].includes(p.answers.reaction) &&
+      p.answers.sensitive===(p.answers.reaction==='yes'))) &&
+    record(p.days) && Object.entries(p.days).every(([key,value])=>date(key) && day(value)) &&
+    Array.isArray(p.logs) && p.logs.every(log=>entry(log) && string(log.text,350)) &&
+    Array.isArray(p.photos) && p.photos.length<=4 && p.photos.every(photo=>entry(photo) && jpeg(photo.src)) &&
+    (p.routine===undefined || plans(p.routine)) &&
+    (p.todayRoutine===undefined || (plans(p.todayRoutine) && date(p.todayRoutine.date))) &&
+    (p.personal===undefined || personal(p.personal)) &&
+    (p.bodyPlan===undefined || (record(p.bodyPlan) && Object.hasOwn(bodyGoals,p.bodyPlan.goal) &&
+      Object.hasOwn(bodyFeel,p.bodyPlan.feel) && string(p.bodyPlan.avoid,180))) &&
+    (p.habits===undefined || (uniqueItems(p.habits,schedule) && p.habits.length<=32)) &&
+    (p.habitChecks===undefined || (record(p.habitChecks) &&
+      Object.entries(p.habitChecks).every(([key,items])=>date(key) && uniqueItems(items,habitItem))));
+  const data = backup?.state;
+  if (backup?.format!==backupFormat || backup.version!==1 || ![0,1].includes(data?.active) ||
+      !Array.isArray(data.people) || data.people.length!==2 || !data.people.every(validProfile)) {
+    throw new Error('Invalid backup');
+  }
+  return data;
+}
+
+async function restoreBackup(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  let restored;
+  try {
+    if (file.size>24*1024*1024) throw new Error('Backup too large');
+    restored = readBackup(JSON.parse(await file.text()));
+  } catch {
+    return notify('เปิดไฟล์นี้ไม่ได้ กรุณาเลือกไฟล์ .json ที่สำรองจาก Glow Together');
+  }
+  if (window.confirm('นำเข้าข้อมูลทั้งสองโปรไฟล์หรือไม่? ข้อมูลจากไฟล์จะแทนที่ข้อมูลในแอปนี้')) {
+    update(() => { state = restored; }, 'นำเข้าข้อมูลทั้งสองโปรไฟล์แล้ว ♡');
+  }
+}
+
+function defaultPlan(profile, period) {
+  const answers = profile.answers;
+  const tips = prefs[answers?.type ?? 'unsure'];
+  const fragrance = answers?.sensitive ? ' · เลือกสูตร fragrance-free' : '';
+  const dryMorning = period==='am' && answers?.type==='dry';
+  const items = [
+    ['cleanse','ล้างหน้า',dryMorning?'น้ำอุ่นเล็กน้อย':'คลีนเซอร์อ่อนโยน',
+      dryMorning?'หลังตื่นนอน ล้างเบา ๆ แล้วซับหน้า':'เริ่มจากล้างหน้าเบา ๆ แล้วซับผิว · '+tips[0]+fragrance],
+    ['moisturize','เติมความชุ่มชื้น','มอยส์เจอไรเซอร์','ทาหลังล้างหน้าขณะผิวยังหมาด · '+tips[1]+fragrance]
+  ];
+  if (period==='am') items.push(['spf','ทากันแดด','กันแดด Broad Spectrum SPF 30+','ทาเป็นขั้นสุดท้าย ประมาณ 15 นาทีก่อนออกแดด · '+tips[2]]);
+  return {time:period==='am'?'07:00':'21:30',items:items.map(([id,title,product,detail])=>({id,title,product,detail,time:'',photo:''}))};
+}
+function planFor(p, time, date = dayKey()) {
+  const override = p.todayRoutine?.date===date ? p.todayRoutine[time] : undefined;
+  return override ?? p.routine?.[time] ?? defaultPlan(p,time);
+}
+const plannedKeys = (p, date) => Object.fromEntries(Object.keys(periods).map(time =>
+  [time,planFor(p,time,date).items.map(item=>item.id)]));
+function progressFor(p, date = dayKey()) {
+  const day = p.days[date];
+  const keys = date===dayKey() ? plannedKeys(p,date) :
+    day?.planned ?? Object.fromEntries(Object.keys(periods).map(time=>[time,defaultPlan(p,time).items.map(item=>item.id)]));
+  return Object.entries(keys).reduce((progress,[time,items])=>{
+    progress.total += items.length;
+    progress.done += items.filter(id=>day?.[time]?.includes(id)).length;
+    return progress;
+  },{done:0,total:0});
+}
+const sectionHead = (eyebrow,title,subtitle) => '<div class="pagehead"><span class="kicker">'+eyebrow+'</span><h1>'+title+'</h1><p class="subtle">'+subtitle+'</p></div>';
+const goto = (pageId) => {
+  if (!Object.hasOwn(routes,pageId)) return;
+  if (pageId==='routine' && !draft) pageId = 'home';
+  if (pageId!=='routine') draft = undefined;
+  if (pageId!=='home') showCompleted = false;
+  if (pageId!=='review') reviewDraft = null;
+  if (pageId!=='calendar') habitDraft = null;
+  page = pageId;
+  if (location.hash !== '#'+page) location.hash = page;
+  render();
+  window.scrollTo(0,0);
+};
+
+const productArt = {
+  cleanse:['#dce9e0','<path d="M20 13h13v5h-7v7h-6z" fill="#456a5a"/><rect x="14" y="23" width="24" height="23" rx="6" fill="#81a891"/><rect x="17" y="29" width="18" height="11" rx="2" fill="#fbf7e8"/><path d="M24 34h5" stroke="#547462" stroke-width="1.4"/>'],
+  moisturize:['#f5e0d4','<rect x="11" y="24" width="30" height="20" rx="5" fill="#dfad97"/><rect x="10" y="18" width="32" height="9" rx="3" fill="#a96753"/><rect x="16" y="30" width="20" height="9" rx="2" fill="#fff7eb"/><path d="M23 34.5h6" stroke="#996b54" stroke-width="1.4"/>'],
+  spf:['#f4ebcf','<path d="M14 13h24l-3 26H17z" fill="#e4b663"/><rect x="18" y="39" width="16" height="6" rx="2" fill="#96692f"/><circle cx="26" cy="26" r="5" fill="#fff3cc"/><path d="M26 19v2m0 10v2m-7-7h2m10 0h2" stroke="#fff3cc" stroke-width="1.2"/>']
+};
+function productImage(item) {
+  if (item.photo) return '<img class="product-image" src="'+esc(item.photo)+'" alt="">';
+  const [background, drawing] = Object.hasOwn(productArt,item.id) ? productArt[item.id] : productArt.cleanse;
+  return '<svg class="product-image" viewBox="0 0 52 52" aria-hidden="true"><rect width="52" height="52" rx="13" fill="'+background+'"/>'+drawing+'</svg>';
+}
+const displayTime = (time) => time+' น.';
+
+const weekdays = ['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.'];
+const allWeekdays = [0,1,2,3,4,5,6];
+const weekday = (key) => (new Date(key+'T12:00:00').getDay()+6)%7;
+function shiftDate(key, days) {
+  const date = new Date(key+'T12:00:00');
+  date.setDate(date.getDate()+days);
+  return dayKey(date);
+}
+const habitPresets = {
+  brushAm:{title:'แปรงฟันตอนเช้า',time:'07:00',days:allWeekdays,detail:'แปรง 2 นาทีด้วยยาสีฟันผสมฟลูออไรด์'},
+  brushPm:{title:'แปรงฟันก่อนนอน',time:'21:30',days:allWeekdays,detail:'แปรง 2 นาทีด้วยยาสีฟันผสมฟลูออไรด์'},
+  hair:{title:'สระผม',time:'19:00',days:[2,6],detail:'เลือกวันให้เหมาะกับความมันและความสกปรกของหนังศีรษะ'},
+  scrub:{title:'สครับผิวกาย',time:'19:30',days:[2],detail:'ถ้าผิวระคายเคือง ไหม้แดด หรือมีแผล ให้ข้ามวันนี้'},
+  photo:{title:'ถ่ายรูปติดตามผิว',time:'08:00',days:[6],detail:'ถ่ายมุมและแสงเดิม แล้วเก็บไว้ที่หน้าเป้าหมาย'}
+};
+let calendarDate = dayKey();
+let habitDraft = null;
+const checksOn = (p,key) => p.habitChecks?.[key] ?? [];
+function habitsOn(p,key) {
+  const done = checksOn(p,key);
+  if (key<dayKey()) return done;
+  const planned = (p.habits ?? []).filter(h=>key>=h.since && (h.once ? h.once===key : h.days.includes(weekday(key))));
+  return [...planned,...done.filter(task=>!planned.some(h=>h.id===task.id))]
+    .sort((first,second)=>(first.time || '99:99').localeCompare(second.time || '99:99'));
+}
+function habitList(p,key) {
+  const habits = habitsOn(p,key);
+  if (!habits.length) return '<p class="subtle">'+(key<dayKey()?'ไม่มีงานที่เช็กว่าเสร็จในวันนี้':'ยังไม่มีงานในวันนี้')+'</p>';
+  return '<ul class="steps">'+habits.map(h=>{
+    const checked = checksOn(p,key).some(task=>task.id===h.id);
+    const content = '<span class="stepicon">'+icon('calendar')+'</span><span class="step-content"><strong>'+esc(h.title)+'</strong>'+
+      '<small>'+(h.time?esc(displayTime(h.time)):'ไม่กำหนดเวลา')+(h.detail?' · '+esc(h.detail):'')+'</small></span>'+
+      '<span class="step-check" aria-hidden="true">'+(checked?icon('check'):'')+'</span>';
+    return '<li class="step">'+(key===dayKey()
+      ? '<button class="step-toggle habit-toggle" type="button" data-habit="'+h.id+'" aria-pressed="'+checked+'">'+content+'</button>'
+      : '<div class="step-toggle habit-toggle" '+(checked?'data-done="true"':'')+'>'+content+'</div>')+'</li>';
+  }).join('')+'</ul>';
+}
+function habitForm() {
+  const h = habitDraft;
+  const once = !!h.once;
+  return '<section class="box" id="habit-editor" tabindex="-1"><h2>'+(h.id?'แก้งาน':'เพิ่มงานดูแลตัวเอง')+'</h2>'+
+    '<form id="habit-form"><div class="field"><label for="habit-title">งานที่ต้องทำ</label><input id="habit-title" name="title" type="text" required maxlength="60" value="'+esc(h.title)+'"></div>'+
+    '<div class="editor-settings habit-fields"><div class="field"><label for="habit-time">เวลา (ถ้ามี)</label><input id="habit-time" name="time" type="time" value="'+esc(h.time)+'"></div>'+
+    '<div class="field"><label for="habit-repeat">ทำเมื่อไหร่?</label><select id="habit-repeat" name="repeat"><option value="weekly" '+(!once?'selected':'')+'>ซ้ำทุกสัปดาห์</option><option value="once" '+(once?'selected':'')+'>ครั้งเดียว</option></select></div></div>'+
+    '<fieldset class="field" id="habit-weekdays" '+(once?'hidden':'')+'><legend>เลือกวัน</legend><div class="choices">'+weekdays.map((label,i)=>
+      '<label class="choice"><input name="days" type="checkbox" value="'+i+'" '+(h.days.includes(i)?'checked':'')+'>'+label+'</label>').join('')+'</div></fieldset>'+
+    '<div class="field" id="habit-single-date" '+(!once?'hidden':'')+'><label for="habit-date">วันที่ทำ</label><input id="habit-date" name="date" type="date" min="'+dayKey()+'" value="'+esc(h.once || (calendarDate>=dayKey()?calendarDate:dayKey()))+'" '+(once?'required':'disabled')+'></div>'+
+    '<div class="field"><label for="habit-detail">โน้ต (ถ้ามี)</label><input id="habit-detail" name="detail" type="text" maxlength="160" value="'+esc(h.detail)+'"></div>'+
+    '<div class="actions"><button class="btn" type="submit">บันทึกงาน</button><button type="button" class="btn light" id="cancel-habit">ยกเลิก</button></div></form></section>';
+}
+function reminderChoices(p) {
+  const today = dayKey();
+  const routines = Object.entries(periods).flatMap(([slot,label])=>{
+    const recurring = p.routine?.[slot] ?? defaultPlan(p,slot);
+    const todayPlan = planFor(p,slot,today);
+    const items = [...recurring.items,...todayPlan.items.filter(step=>!recurring.items.some(item=>item.id===step.id))];
+    return items.map(item=>{
+      const regular = recurring.items.find(step=>step.id===item.id);
+      const currentItem = todayPlan.items.find(step=>step.id===item.id);
+      const normalTime = regular ? regular.time || recurring.time : '';
+      const todayTime = currentItem ? currentItem.time || todayPlan.time : '';
+      const title = (regular ?? currentItem).title;
+      const events = [];
+      if (regular) events.push({key:slot+'-'+item.id,date:todayTime===normalTime?today:shiftDate(today,1),time:normalTime,title,days:allWeekdays});
+      if (todayTime && todayTime!==normalTime) events.push({key:slot+'-'+item.id+'-'+today,date:today,time:todayTime,title:currentItem.title,days:[]});
+      return {id:slot+'-'+item.id,title,label:label+' · '+displayTime(normalTime || todayTime)+(regular?'':' · เฉพาะวันนี้'),events};
+    });
+  });
+  const habits = (p.habits ?? []).filter(task=>task.time && (!task.once || task.once>=today)).map(task=>({
+    id:'habit-'+task.id,title:task.title,label:displayTime(task.time)+' · '+(task.once?thaiDate(task.once):
+      task.days.length===7?'ทุกวัน':task.days.map(day=>weekdays[day]).join(' ')),
+    events:[{key:'habit-'+task.id,date:task.once || (task.since>today?task.since:today),time:task.time,title:task.title,days:task.days}]
+  }));
+  return [...routines,...habits];
+}
+
+function reminders() {
+  const p = current();
+  return sectionHead('IPHONE REMINDERS','ตั้งเตือนของ'+esc(p.name),'เลือกเฉพาะงานที่อยากให้ปฏิทิน iPhone เตือนตามเวลาที่ตั้งไว้')+
+    '<div class="grid"><section class="box"><h2>งานที่จะเตือน</h2><form id="reminder-form" class="stack">'+
+    reminderChoices(p).map(item=>'<label class="body-choice reminder-choice"><input name="reminder" type="checkbox" value="'+item.id+'">'+
+      '<span><strong>'+esc(item.title)+'</strong><small>'+esc(item.label)+'</small></span></label>').join('')+
+    '<div class="actions"><button class="btn" type="submit">'+icon('calendar')+'ดาวน์โหลดไฟล์เตือน</button></div></form></section>'+
+    '<section class="box"><h2>เพิ่มลงปฏิทิน iPhone</h2><ol class="reminder-help"><li>ดาวน์โหลดไฟล์ .ics จากงานที่เลือก</li>'+
+    '<li>แนบไฟล์ส่งให้ตัวเอง แล้วเปิดไฟล์แนบจากแอป Mail บน iPhone เพื่อนำเข้า Calendar</li>'+
+    '<li>เปิดเหตุการณ์ใน Calendar แล้วตรวจว่า Alert ตั้งไว้ที่เวลาเริ่มงานและเปิดการแจ้งเตือนของ Calendar อยู่</li></ol>'+
+    '<p class="note">ถ้าเปลี่ยนเวลาหรือลบงานใน Glow Together ให้แก้รายการที่นำเข้าไว้ใน Calendar ด้วย</p>'+
+    '<div class="sources"><a href="https://support.apple.com/guide/iphone/set-up-mail-contacts-and-calendar-accounts-ipha0d932e96/ios" target="_blank" rel="noopener">วิธีนำเข้าไฟล์จาก Apple</a></div></section></div>';
+}
+const calendarDays = ['MO','TU','WE','TH','FR','SA','SU'];
+const icsText = (value) => value.replace(/[\\;,\r\n]/g,char=>char==='\r' || char==='\n'?'\\n':'\\'+char);
+function foldIcs(line) {
+  const encoder = new TextEncoder();
+  let result = '', size = 0;
+  for (const char of line) {
+    const bytes = encoder.encode(char).length;
+    if (size+bytes>75) {
+      result += '\r\n ';
+      size = 1;
+    }
+    result += char;
+    size += bytes;
+  }
+  return result;
+}
+function reminderCalendar(events, now = new Date()) {
+  const today = dayKey(now);
+  const clock = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const stamp = now.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
+  const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Glow Together//Routine reminders//TH','CALSCALE:GREGORIAN'];
+  for (const event of events) {
+    let date = event.date;
+    if (event.days.length) {
+      if (date===today && event.time<=clock) date = shiftDate(date,1);
+      while (!event.days.includes(weekday(date))) date = shiftDate(date,1);
+    } else if (date<today || (date===today && event.time<=clock)) {
+      continue;
+    }
+    const start = date.replaceAll('-','')+'T'+event.time.replace(':','')+'00';
+    lines.push('BEGIN:VEVENT','UID:'+state.active+'-'+event.key+'@glow-together.local','DTSTAMP:'+stamp,
+      'DTSTART:'+start,'DURATION:PT5M','SUMMARY:'+icsText(event.title));
+    if (event.days.length===7) lines.push('RRULE:FREQ=DAILY');
+    else if (event.days.length) lines.push('RRULE:FREQ=WEEKLY;BYDAY='+event.days.map(day=>calendarDays[day]).join(','));
+    lines.push('BEGIN:VALARM','ACTION:DISPLAY','TRIGGER:PT0M','DESCRIPTION:'+icsText(event.title),'END:VALARM','END:VEVENT');
+  }
+  return lines.includes('BEGIN:VEVENT') ? [...lines,'END:VCALENDAR',''].map(foldIcs).join('\r\n') : '';
+}
+function exportReminders(data) {
+  const selected = new Set(data.getAll('reminder'));
+  if (!selected.size) return notify('เลือกงานที่ต้องการเตือนก่อน');
+  const file = reminderCalendar(reminderChoices(current()).filter(item=>selected.has(item.id)).flatMap(item=>item.events));
+  if (!file) return notify('เวลาของงานที่เลือกผ่านไปแล้ว');
+  downloadFile(file,'text/calendar;charset=utf-8','Glow-Together-Reminders.ics');
+  notify('ดาวน์โหลดไฟล์เตือนแล้ว เปิดไฟล์แนบใน Mail เพื่อนำเข้า Calendar');
+}
+
+function calendar() {
+  const p = current(), today = dayKey(), start = shiftDate(calendarDate,-weekday(calendarDate));
+  const end = shiftDate(start,6);
+  return sectionHead('WEEKLY CARE','ปฏิทินของ'+esc(p.name),'วางตารางดูแลตัวเองตามวันที่สะดวก แล้วเช็กงานของวันนี้ได้เลย')+
+    '<div class="grid calendar-grid"><div class="stack"><section class="box"><div class="calendar-head">'+
+    '<button type="button" class="btn light small" data-week="-7" aria-label="สัปดาห์ก่อน">‹</button><strong>'+thaiDate(start)+' – '+thaiDate(end)+'</strong>'+
+    '<button type="button" class="btn light small" data-week="7" aria-label="สัปดาห์ถัดไป">›</button></div>'+
+    '<div class="calendar-week" aria-label="เลือกวัน">'+weekdays.map((label,index)=>{
+      const key = shiftDate(start,index), count = habitsOn(p,key).length;
+      return '<button type="button" data-calendar-date="'+key+'" aria-label="'+thaiDate(key,{weekday:'long',day:'numeric',month:'long'})+(count?' '+count+' งาน':'')+'" aria-pressed="'+(key===calendarDate)+'">'+
+        '<small>'+label+'</small><strong>'+Number(key.slice(-2))+'</strong><span>'+ (count?count+' งาน':'·') +'</span></button>';
+    }).join('')+'</div>'+
+    '<div class="section-top calendar-selected"><div><h2>'+thaiDate(calendarDate,{weekday:'long',day:'numeric',month:'long'})+'</h2></div>'+
+    (calendarDate===today?'<span class="pill">วันนี้</span>':'<button type="button" class="link-btn" data-calendar-date="'+today+'">กลับวันนี้</button>')+'</div>'+
+    (calendarDate>=today?'<div class="calendar-routine"><strong>สกินแคร์ตามแผน</strong><div class="choices">'+
+      Object.entries(periods).map(([time,label])=>'<span class="pill">'+label+' · '+esc(displayTime(planFor(p,time,calendarDate).time))+'</span>').join('')+
+      '</div></div>':'')+habitList(p,calendarDate)+'</section>'+
+    (habitDraft ? habitForm() : '<section class="box"><h2>เพิ่มงาน</h2><p class="subtle">เลือกตัวอย่างแล้วปรับวันและเวลาได้</p><div class="actions">'+
+      Object.entries(habitPresets).map(([key,h])=>'<button type="button" class="btn light small" data-preset="'+key+'">'+h.title+'</button>').join('')+
+      '<button type="button" class="btn" data-preset="custom">＋ งานของฉัน</button></div><div class="sources"><a href="https://www.ada.org/resources/ada-library/oral-health-topics/home-oral-care/" target="_blank" rel="noopener">การดูแลฟัน</a><a href="https://www.aad.org/public/everyday-care/hair-scalp-care/hair/healthy-hair-tips" target="_blank" rel="noopener">การสระผม</a><a href="https://www.aad.org/public/everyday-care/skin-care-secrets/routine/safely-exfoliate-at-home" target="_blank" rel="noopener">การสครับผิว</a></div></section>')+
+    '</div><section class="box"><h2>ตารางของฉัน</h2>'+
+    ((p.habits ?? []).length?p.habits.map(h=>'<article class="log"><strong>'+esc(h.title)+'</strong><p class="subtle">'+
+      (h.once?thaiDate(h.once):h.days.length===7?'ทุกวัน':h.days.map(day=>weekdays[day]).join(' · '))+
+      (h.time?' · '+esc(displayTime(h.time)):'')+'</p><div class="habit-actions"><button type="button" class="link-btn" data-edit-habit="'+h.id+'">แก้ไข</button>'+
+      '<button type="button" class="link-btn" data-delete-habit="'+h.id+'">ลบ</button></div></article>').join(''):'<p class="subtle">งานที่บันทึกไว้จะแสดงที่นี่</p>')+
+    '</section></div>';
+}
+function saveHabit(data) {
+  const p = current(), title = data.get('title').trim();
+  const once = data.get('repeat')==='once' ? data.get('date') : '';
+  const days = once ? [] : data.getAll('days').map(Number);
+  if (!title) return notify('ใส่ชื่องานก่อนบันทึก');
+  if (!once && !days.length) return notify('เลือกอย่างน้อยหนึ่งวัน');
+  if (once && once<dayKey()) return notify('เลือกวันนี้หรือวันถัดไป');
+  if (!habitDraft.id && (p.habits?.length ?? 0)>=32) return notify('ตารางนี้เก็บได้ 32 งาน ลบงานที่ไม่ได้ใช้ก่อนเพิ่ม');
+  const h = {id:habitDraft.id || crypto.randomUUID(),title,time:data.get('time'),days,once,since:dayKey(),detail:data.get('detail').trim()};
+  const selected = once || shiftDate(dayKey(),(days.find(day=>day>=weekday(dayKey())) ?? days[0]+7)-weekday(dayKey()));
+  const previous = habitDraft;
+  const oldDate = calendarDate;
+  habitDraft = null;
+  calendarDate = selected;
+  if (!update(()=>{
+    p.habits = [...(p.habits ?? []).filter(task=>task.id!==h.id),h];
+  },'บันทึกงานแล้ว ♡')) {
+    habitDraft = previous;
+    calendarDate = oldDate;
+  } else {
+    window.scrollTo(0,0);
+  }
+}
+function toggleHabit(id) {
+  const p = current(), key = dayKey(), task = habitsOn(p,key).find(h=>h.id===id);
+  if (!task) return;
+  const checked = checksOn(p,key);
+  const done = checked.some(h=>h.id===id);
+  if (update(()=>{
+    (p.habitChecks ??= {})[key] = done ? checked.filter(h=>h.id!==id) :
+      [...checked,{id:task.id,title:task.title,time:task.time,detail:task.detail}];
+  })) focusAfterCheck('[data-habit="'+id+'"]');
+}
+
+function todayTimeline(p, date) {
+  const routine = Object.keys(periods).flatMap(slot=>{
+    const plan = planFor(p,slot,date);
+    return plan.items.map(item=>({
+      ...item,slot,time:item.time || plan.time,label:'สกินแคร์ · '+periods[slot],
+      checked:p.days[date]?.[slot]?.includes(item.id) ?? false
+    }));
+  });
+  const habits = habitsOn(p,date).map(item=>({
+    ...item, label:'ดูแลตัวเอง', checked:checksOn(p,date).some(done=>done.id===item.id)
+  }));
+  return [...routine,...habits].sort((a,b)=>(a.time || '99:99').localeCompare(b.time || '99:99'));
+}
+
+function timelineRow(task, next = false) {
+  const source = task.slot ? productImage(task) : '<span class="stepicon">'+icon('calendar')+'</span>';
+  const action = task.slot ? 'data-step="'+task.id+'" data-slot="'+task.slot+'"' : 'data-habit="'+task.id+'"';
+  return '<li class="step'+(next?' timeline-next':'')+'"><button type="button" class="step-toggle" '+action+' aria-pressed="'+task.checked+'">'+
+    source+'<span class="step-content"><small class="step-number">'+(task.time?displayTime(task.time):'ไม่กำหนดเวลา')+
+    ' · '+task.label+(next?' · งานถัดไป':'')+'</small><strong>'+esc(task.title)+'</strong>'+
+    '<small>'+(task.product?'<b>'+esc(task.product)+'</b>':'')+esc(task.detail)+'</small></span>'+
+    '<span class="step-check" aria-hidden="true">'+(task.checked?icon('check'):'')+'</span></button></li>';
+}
+
+function home() {
+  const date = dayKey();
+  const p = current();
+  const timeline = todayTimeline(p,date);
+  const remaining = timeline.filter(task=>!task.checked);
+  const completed = timeline.filter(task=>task.checked);
+  return '<div class="today-head"><div class="today-intro"><div class="date kicker">'+icon('calendar')+thaiDate(date,{weekday:'long',day:'numeric',month:'long'})+'</div>'+
+    '<h1>วันนี้ของ'+esc(p.name)+' <span aria-hidden="true">♡</span></h1><p class="subtle">เปิดดูงานถัดไป แล้วแตะทั้งแถวเมื่อทำเสร็จ</p></div><img src="ritual.svg" alt=""></div>'+
+    '<div class="dash"><section class="box timeline"><div class="section-top"><div><span class="kicker">DAILY CARE</span><h2>ตารางวันนี้</h2></div>'+
+    '<span class="pill">'+completed.length+'/'+timeline.length+' งาน</span></div>'+bar(completed.length,timeline.length)+
+    (remaining.length ? '<ul class="steps">'+remaining.map((task,index)=>timelineRow(task,index===0)).join('')+'</ul>' :
+      '<p class="note">ครบทุกงานของวันนี้แล้ว ♡</p>')+
+    (completed.length ? '<details class="timeline-done" '+(showCompleted?'open':'')+'><summary>ทำเสร็จแล้ว · '+completed.length+' งาน</summary>'+
+      '<ul class="steps">'+completed.map(task=>timelineRow(task)).join('')+'</ul></details>' : '')+
+    '<div class="actions today-actions"><button type="button" class="btn light small" data-edit-period="am">แก้รูทีนเช้า</button>'+
+    '<button type="button" class="btn light small" data-edit-period="pm">แก้รูทีนก่อนนอน</button>'+
+    '<button type="button" class="btn light small" id="open-calendar">เปิดปฏิทิน</button>'+
+    '<button type="button" class="btn light small" data-page="reminders">ตั้งเตือน</button></div></section>'+
+    '<aside class="rightcol"><section class="box couple"><div class="section-top"><div class="badge-icon">'+icon('heart')+'</div><div><h3>ทำไปด้วยกัน</h3><small>ตารางวันนี้ของเราสองคน</small></div></div>'+
+    state.people.map((person,index)=>{
+      const tasks = todayTimeline(person,date);
+      const done = tasks.filter(task=>task.checked).length;
+      return '<div class="couple-row">'+avatar(person,index)+'<strong>'+esc(person.name)+'</strong>'+bar(done,tasks.length)+'<small>'+done+'/'+tasks.length+'</small></div>';
+    }).join('')+'</section>'+
+    '<section class="box goal-card"><div class="goal-head"><div class="badge-icon mint">'+icon('target')+'</div><div><span class="kicker">MY SKIN GOAL</span><h3>เป้าหมายของ'+esc(p.name)+'</h3></div></div><p class="subtle">'+esc(p.goal || 'เลือกสิ่งที่อยากให้ผิวค่อย ๆ ดีขึ้น')+'</p><button class="link-btn" data-page="goals">'+(p.goal?'ดูความคืบหน้า':'ตั้งเป้าหมาย')+icon('arrow')+'</button></section></aside></div>';
+}
+
+function focusAfterCheck(selector) {
+  const row = document.querySelector(selector);
+  const folded = row?.closest('details:not([open])');
+  (folded ? document.querySelector('.timeline-next button') ?? folded.querySelector('summary') : row)?.focus();
+}
+
+function routine() {
+  const {plan,scope} = draft;
+  return sectionHead('MY DAILY RITUAL','แก้รูทีน'+periods[period],'ของ'+esc(current().name)+' · แตะเพื่อแก้เวลา ขั้นตอน และผลิตภัณฑ์')+
+    '<form id="routine-form" class="stack routine-editor"><section class="box"><div class="editor-settings">'+
+    '<div class="field"><label for="routine-time">เวลาเริ่มรูทีน</label><input id="routine-time" name="routine-time" type="time" required value="'+esc(plan.time)+'"></div>'+
+    '<div class="field"><label for="routine-scope">ใช้รูทีนนี้เมื่อไหร่?</label><select id="routine-scope" name="scope">'+
+    '<option value="daily" '+(scope==='daily'?'selected':'')+'>ทุกวัน</option><option value="today" '+(scope==='today'?'selected':'')+'>เฉพาะวันนี้</option></select></div></div>'+
+    '<p class="subtle">ตั้งเวลาตามตารางของคุณ และใส่เวลาแยกสำหรับขั้นที่ต้องทำต่างเวลาได้</p></section>'+
+    plan.items.map((item,i)=>'<section class="box editor-step" data-item="'+item.id+'"><div class="editor-step-head">'+productImage(item)+
+      '<div><span class="kicker">ขั้น '+(i+1)+'</span><h3>'+esc(item.title || 'ขั้นตอนใหม่')+'</h3></div><div class="editor-order">'+
+      '<button type="button" class="btn light small" data-move="-1" aria-label="เลื่อนขั้น '+(i+1)+' ขึ้น" '+(i===0?'disabled':'')+'>↑</button>'+
+      '<button type="button" class="btn light small" data-move="1" aria-label="เลื่อนขั้น '+(i+1)+' ลง" '+(i===plan.items.length-1?'disabled':'')+'>↓</button></div></div>'+
+      '<div class="editor-settings"><div class="field"><label for="title-'+item.id+'">ขั้นตอน</label><input id="title-'+item.id+'" data-key="title" type="text" required maxlength="60" value="'+esc(item.title)+'" placeholder="เช่น ทามอยส์เจอไรเซอร์"></div>'+
+      '<div class="field"><label for="time-'+item.id+'">เวลาแยก (ถ้ามี)</label><input id="time-'+item.id+'" data-key="time" type="time" value="'+esc(item.time)+'"></div></div>'+
+      '<div class="field"><label for="product-'+item.id+'">ชื่อผลิตภัณฑ์</label><input id="product-'+item.id+'" data-key="product" type="text" maxlength="80" value="'+esc(item.product)+'" placeholder="เช่น ชื่อครีมที่ใช้อยู่"></div>'+
+      '<div class="field"><label for="detail-'+item.id+'">ใช้เมื่อไหร่ และใช้อย่างไร</label><textarea id="detail-'+item.id+'" data-key="detail" rows="2" maxlength="220" placeholder="เช่น ทาหลังล้างหน้าขณะผิวยังหมาด">'+esc(item.detail)+'</textarea></div>'+
+      '<div class="actions"><button type="button" class="btn light small" data-pick-product>'+icon('camera')+(item.photo?'เปลี่ยนรูป':'ใส่รูปผลิตภัณฑ์')+'</button>'+
+      '<input type="file" accept="image/*" data-product-file hidden>'+
+      (item.photo?'<button type="button" class="link-btn" data-remove-product>เอารูปออก</button>':'')+
+      '<button type="button" class="link-btn" data-remove-step '+(plan.items.length===1?'disabled':'')+'>ลบขั้นตอน</button></div></section>').join('')+
+    '<div class="actions"><button type="button" class="btn soft" id="add-step" '+(plan.items.length===maxSteps?'disabled':'')+'>＋ เพิ่มขั้นตอน</button>'+
+    '<button type="button" class="link-btn" id="reset-plan">ใช้แผนแนะนำ</button></div>'+
+    '<div class="editor-save"><button type="button" class="btn light" data-page="home">ยกเลิก</button><button type="submit" class="btn">'+icon('check')+'บันทึกรูทีน</button></div></form>';
+}
+
+function options(name, items, value) {
+  return '<div class="choices">'+Object.entries(items).map(([key,label])=>'<label class="choice"><input type="radio" name="'+name+'" value="'+key+'" '+(key===value?'checked':'')+' required>'+label+'</label>').join('')+'</div>';
+}
+const preferences = {
+  age:{unsure:'ไม่ระบุ',teen:'ต่ำกว่า 18 ปี',adult:'18–34 ปี',mid:'35–54 ปี',older:'55 ปีขึ้นไป'},
+  texture:{any:'ได้ทุกแบบ',light:'ชอบแบบบางเบา',rich:'ชอบเนื้อครีม'},
+  budget:{reuse:'เน้นใช้ของที่มี',simple:'ซื้อเพิ่มทีละชิ้น',compare:'อยากเทียบตัวเลือก'}
+};
+const catalog = {
+  gentle:{name:'Cetaphil Gentle Skin Cleanser',url:'https://www.cetaphil.co.th/en/products/face',why:'ตัวอย่างคลีนเซอร์อ่อนโยนสำหรับผิวที่ตึงง่าย'},
+  foam:{name:'CeraVe Foaming Cleanser',url:'https://www.cerave.co.th/',why:'ตัวอย่างเจลล้างหน้าสำหรับผิวธรรมดาถึงมัน'},
+  lotion:{name:'CeraVe Moisturising Lotion',url:'https://www.cerave.co.th/skincare/body-moisturizers',why:'ตัวอย่างโลชั่นเนื้อเบา ถ้าชอบสัมผัสที่เกลี่ยง่าย'},
+  cream:{name:'CeraVe Moisturising Cream',url:'https://www.cerave.co.th/skincare/moisturising-cream',why:'ตัวอย่างครีมเข้มข้นสำหรับบริเวณที่แห้ง'},
+  oil:{name:'Eucerin Sun Dry Touch Oil Control SPF50+',url:'https://www.eucerin.co.th/products/sun-protection/sun-dry-touch-acne-oil-control-spf-50-pa-plus-plus',why:'ตัวอย่างกันแดดเนื้อแห้งบางเบา ถ้าชอบผิวสัมผัสแบบแมตต์'},
+  fluid:{name:'La Roche-Posay Anthelios UVMune 400 Invisible Fluid SPF50+',url:'https://www.larocheposay-th.com/anthelios/anthelios-uvmune-400-invisible-fluid-spf50',why:'ตัวอย่างกันแดดเนื้อฟลูอิด เขย่าขวดก่อนใช้ตามฉลาก'}
+};
+function selects(name,label,values,selected) {
+  return '<div class="field"><label for="skin-'+name+'">'+label+'</label><select name="'+name+'" id="skin-'+name+'">'+
+    Object.entries(values).map(([key,value])=>'<option value="'+key+'" '+(key===selected?'selected':'')+'>'+value+'</option>').join('')+'</select></div>';
+}
+function personalFields(p) {
+  const data = p.personal ?? {};
+  return '<details class="personal-fields"><summary>บอกข้อมูลเพิ่มเพื่อปรับแผน (ไม่บังคับ)</summary>'+
+    '<div class="editor-settings habit-fields">'+selects('age','ช่วงอายุ',preferences.age,data.age)+
+    selects('texture','เนื้อสัมผัสที่ชอบ',preferences.texture,data.texture)+'</div>'+
+    selects('budget','อยากเริ่มแบบไหน?',preferences.budget,data.budget)+
+    '<div class="field"><label for="skin-current">ของที่ใช้อยู่</label><input id="skin-current" name="current" type="text" maxlength="180" placeholder="เช่น คลีนเซอร์ มอยส์เจอไรเซอร์ กันแดด" value="'+esc(data.current)+'"></div>'+
+    '<div class="field"><label for="skin-avoid">ส่วนผสมหรือสูตรที่เคยมีปัญหา</label><input id="skin-avoid" name="avoid" type="text" maxlength="180" placeholder="กรอกเฉพาะถ้าทราบ" value="'+esc(data.avoid)+'"></div></details>';
+}
+function examplesFor(p) {
+  const a = p.answers, data = p.personal ?? {};
+  const prefersRich = data.texture==='rich' || (a.type==='dry' && data.texture!=='light');
+  const oily = a.type==='oily' || a.type==='combo';
+  return {
+    cleanse:a.type==='oily' && !a.sensitive ? ['foam','gentle'] : ['gentle','foam'],
+    moisturize:prefersRich ? ['cream','lotion'] : ['lotion','cream'],
+    spf:oily && a.concern!=='glow' ? ['oil','fluid'] : ['fluid','oil']
+  };
+}
+function exampleCards(p) {
+  const data = p.personal ?? {};
+  if (data.avoid) return '<p class="note">คุณระบุสูตรหรือส่วนผสมที่เคยมีปัญหา แผนจึงแนะนำประเภทผลิตภัณฑ์ ให้ตรวจฉลากก่อนเลือกยี่ห้อ</p>';
+  const alternatives = examplesFor(p);
+  return '<section class="product-examples"><h3>ตัวอย่างผลิตภัณฑ์</h3>'+
+    '<p class="subtle">เลือกอย่างละหนึ่งตามเนื้อสัมผัสและงบ เช็กส่วนผสมบนฉลากและลองทีละตัว</p>'+
+    Object.entries(alternatives).map(([type,keys])=>{
+      if (type==='spf' && p.answers.sensitive) {
+        return '<p class="note">ถ้ากันแดดเคยทำให้แสบ ลองมองหาสูตรมิเนอรัลไม่มีน้ำหอมที่ใช้ zinc oxide หรือ titanium dioxide แล้วทดลองบริเวณเล็ก ๆ ก่อน</p>';
+      }
+      const options = data.budget==='compare' ? keys : keys.slice(0,1);
+      return options.map(key=>{
+        const item = catalog[key];
+        return '<a class="product-card" href="'+item.url+'" target="_blank" rel="noopener">'+productImage({id:type})+
+          '<span><strong>'+item.name+'</strong><small>'+item.why+'</small></span>'+icon('arrow')+'</a>';
+      }).join('');
+    }).join('')+'</section>';
+}
+function planContext(p) {
+  const data = p.personal ?? {};
+  const goal = concerns[p.answers.concern];
+  const method = data.budget==='compare'?'เทียบเนื้อสัมผัสก่อนตัดสินใจ':data.budget==='simple'?
+    'ถ้าจะซื้อเพิ่ม ให้เริ่มทีละตัวจากขั้นที่ยังขาด':'เริ่มจากของที่ใช้อยู่และผิวรับได้';
+  return '<p class="note"><strong>'+goal.label+'</strong> · '+method+
+    (data.age==='teen'?' ใช้แผนพื้นฐานและปรึกษาผู้ปกครองก่อนเพิ่มผลิตภัณฑ์เฉพาะปัญหา':'')+
+    (data.current?' <span class="subtle">ของที่ใช้ตอนนี้ '+esc(data.current)+'</span>':'')+'</p>';
+}
+function aiPrompt(p) {
+  const a = p.answers, data = p.personal ?? {};
+  return [
+    'ช่วยสังเกตภาพผิวหน้าของฉันที่ฉันเลือกแนบ โดยบอกเฉพาะสิ่งที่มองเห็น เช่น ความเงา ความแดง หรือผิวเป็นขุย ระบุข้อจำกัดเรื่องแสงและมุมภาพ ไม่ระบุอัตลักษณ์ ไม่วินิจฉัยโรคและไม่สรุปประเภทผิวจากรูปอย่างเดียว',
+    'สภาพผิวจากการสังเกต: '+skinTypes[a.type]+' · ระคายเคืองจากผลิตภัณฑ์ใหม่: '+({yes:'ค่อนข้างง่าย',no:'ไม่ค่อย',unsure:'ยังไม่แน่ใจ'})[a.reaction],
+    'เป้าหมาย: '+concerns[a.concern].label+(p.goal?' · '+p.goal:''),
+    data.age && data.age!=='unsure'?'ช่วงอายุ: '+preferences.age[data.age]:'',
+    data.texture && data.texture!=='any'?'เนื้อสัมผัสที่ชอบ: '+preferences.texture[data.texture]:'',
+    data.budget?'วิธีเลือกซื้อ: '+preferences.budget[data.budget]:'',
+    data.current?'ผลิตภัณฑ์ที่ใช้อยู่: '+data.current:'',
+    data.avoid?'สิ่งที่เคยมีปัญหา: '+data.avoid:'',
+    'ช่วยเสนอแผนเช้าและก่อนนอนที่เริ่มได้ง่าย บอกลำดับ วิธีใช้ และตัวอย่างคลีนเซอร์ มอยส์เจอไรเซอร์ และกันแดดจากเว็บไซต์ผู้ผลิตในไทย ระบุสิ่งที่ควรตรวจบนฉลาก และสิ่งที่ควรบันทึกเพื่อเทียบผลรายสัปดาห์ ถ้าข้อมูลไม่พอให้ถามก่อน'
+  ].filter(Boolean).join('\n');
+}
+function aiCard(p) {
+  return '<details class="ai-card"><summary>'+icon('sparkle')+' ใช้ ChatGPT ช่วยดูรูปและแผน</summary>'+
+    '<p class="subtle">อ่านข้อความก่อนคัดลอก เปิด ChatGPT แล้ววางคำถามและแนบรูปที่คุณเลือกเอง ผลจะอยู่ในแชต แอปนี้เก็บคำตอบแบบสอบถามและรูปไว้ในเครื่อง</p>'+
+    '<label for="ai-prompt">คำถามของคุณ</label><textarea readonly id="ai-prompt" rows="5">'+esc(aiPrompt(p))+'</textarea>'+
+    '<div class="actions"><button type="button" class="btn light small" id="copy-ai">คัดลอกคำถาม</button><a class="btn small" href="https://chatgpt.com/" target="_blank" rel="noopener">เปิด ChatGPT'+icon('arrow')+'</a></div></details>';
+}
+async function copyAiPrompt() {
+  const field = $('ai-prompt');
+  try {
+    await navigator.clipboard.writeText(field.value);
+    notify('คัดลอกแล้ว วางใน ChatGPT ได้เลย');
+  } catch {
+    field.focus();
+    field.select();
+    notify('เลือกข้อความแล้ว แตะคัดลอกได้เลย');
+  }
+}
+function applySkinPlan() {
+  const p = current();
+  if (!p.answers) return;
+  if ((p.routine || p.todayRoutine?.date===dayKey()) && !window.confirm('ใช้แผนนี้แทนรูทีนเช้าและก่อนนอนที่ตั้งไว้หรือไม่?')) return;
+  if (update(()=>{
+    p.routine = Object.fromEntries(Object.keys(periods).map(time=>{
+      const plan = defaultPlan(p,time);
+      plan.time = planFor(p,time).time;
+      return [time,plan];
+    }));
+    delete p.todayRoutine;
+    refreshDay(p,dayKey());
+  },'ใช้แผนในรูทีนแล้ว ♡')) goto('home');
+}
+
+const bodyGoals = {
+  even:'สีผิวดูสม่ำเสมอขึ้น',
+  soft:'ผิวนุ่ม ชุ่มชื้นขึ้น',
+  outdoor:'ดูแลผิวที่โดนแดดบ่อย'
+};
+const bodyFeel = {dry:'แห้งตึงหลังอาบน้ำ',balanced:'รู้สึกสบายผิว',sensitive:'ระคายเคืองง่าย'};
+const bodyProducts = {
+  lotion:{id:'lotion',name:'CeraVe Daily Moisturising Lotion',short:'CeraVe Daily Lotion',detail:'เนื้อโลชั่นบางเบา',url:'https://www.cerave.co.th/skincare/daily-moisturising-lotion'},
+  cream:{id:'cream',name:'CeraVe Moisturising Cream',short:'CeraVe Cream',detail:'เนื้อครีมสำหรับผิวที่แห้งตึง',url:'https://www.cerave.co.th/skincare/moisturising-cream'},
+  sun:{id:'sun',name:'Eucerin Sun Body Oil Control Dry Touch SPF50+',short:'Eucerin Sun Body SPF50+',detail:'กันแดดผิวกายเนื้อแห้งเบา สูตรนี้มีแอลกอฮอล์',url:'https://www.eucerin.co.th/products/sun-protection/sun-gel-cream-dry-touch-sensitive-protect-spf-50plus'},
+  tone:{id:'tone',name:'Eucerin Spotless Brightening Body Lotion',short:'Eucerin Spotless Body Lotion',detail:'โลชั่นผิวกายที่มี Thiamidol ให้ทดลองบริเวณเล็ก ๆ และใช้ตามฉลาก',url:'https://www.eucerin.co.th/products/spotless-brightening/spotless-skin-tone-perfecting-body-lotion'}
+};
+
+function bodySteps(p) {
+  const {goal,feel,avoid} = p.bodyPlan;
+  const gentle = feel==='sensitive';
+  const moisturizers = feel==='dry' ? [bodyProducts.cream,bodyProducts.lotion] : [bodyProducts.lotion,bodyProducts.cream];
+  if (goal==='even' && !gentle) moisturizers.push(bodyProducts.tone);
+  const steps = [
+    {id:'body-spf',title:'ทากันแดดผิวกาย',time:'07:00',days:allWeekdays,art:'spf',selected:true,
+      detail:'ทาบริเวณที่เสื้อผ้าไม่ปิด 15 นาทีก่อนออกแดด ทาซ้ำทุก 2 ชม. เมื่ออยู่กลางแจ้งและหลังว่ายน้ำหรือเหงื่อออก',
+      products:gentle?[]:[bodyProducts.sun]},
+    {id:'body-moisturize',title:'ทาโลชั่นหรือครีมทาตัว',time:'20:00',days:allWeekdays,art:'moisturize',selected:true,
+      detail:'ทาหลังอาบน้ำและซับตัวหมาด ๆ'+(gentle?' เลือกสูตรไม่มีน้ำหอม':''),
+      products:moisturizers},
+    {id:'body-checkin',title:'เช็กความเปลี่ยนแปลงของผิวกาย',time:'19:00',days:[6],art:'',selected:false,
+      detail:goal==='even'?'สังเกตรอยคล้ำหรือสีผิวบริเวณเดิมในแสงเดิม':goal==='soft'?
+        'จดว่าผิวตึงหรือเป็นขุยหลังอาบน้ำน้อยลงไหม':'จดว่าวันไหนออกแดดและทากันแดดซ้ำได้ตามแผน',
+      products:[]}
+  ];
+  return avoid ? steps.map(step=>({...step,products:[]})) : steps;
+}
+
+function bodyPlanForm(p) {
+  const data = p.bodyPlan ?? {};
+  return '<section class="box"><span class="kicker">BODY CHECK</span><h2>อยากดูแลเรื่องไหน?</h2><form id="body-form">'+
+    '<fieldset class="field"><legend>เป้าหมายผิวกาย</legend>'+options('goal',bodyGoals,data.goal)+'</fieldset>'+
+    '<fieldset class="field"><legend>ปกติผิวกายรู้สึกอย่างไร?</legend>'+options('feel',bodyFeel,data.feel)+'</fieldset>'+
+    '<div class="field"><label for="body-avoid">ส่วนผสมที่เคยมีปัญหา (ถ้ามี)</label>'+
+    '<input id="body-avoid" name="avoid" type="text" maxlength="180" value="'+esc(data.avoid)+'"></div>'+
+    '<div class="actions"><button class="btn" type="submit">'+icon('sparkle')+'ดูแผนผิวกาย</button></div></form>'+
+    '<p class="note">แผนนี้เน้นให้ผิวรู้สึกสบาย ดูชุ่มชื้น และลดโอกาสเกิดรอยคล้ำเพิ่ม ผลของรอยเดิมขึ้นอยู่กับสาเหตุ</p></section>';
+}
+function bodyStepCard(p,step) {
+  const existing = p.habits?.find(h=>h.id===step.id);
+  const days = existing?.days ?? step.days;
+  const schedule = existing?.once ? thaiDate(existing.once) :
+    days.length===7 ? 'ทุกวัน' : days.map(day=>weekdays[day]).join(' · ');
+  const choices = step.products.map(product=>'<a class="product-card" href="'+product.url+'" target="_blank" rel="noopener">'+
+    productImage({id:step.art})+'<span><strong>'+product.name+'</strong><small>'+product.detail+'</small></span>'+icon('arrow')+'</a>').join('');
+  return '<article class="body-step"><label class="body-choice"><input type="checkbox" name="steps" value="'+step.id+'" '+(step.selected?'checked':'')+'>'+
+    '<span><strong>'+step.title+'</strong><small>'+schedule+
+    (existing?' · อยู่ในปฏิทินแล้ว':'')+'</small></span></label><p class="subtle">'+step.detail+'</p>'+
+    (step.id==='body-spf' && p.bodyPlan.feel==='sensitive'?
+      '<p class="subtle">ถ้าทากันแดดแล้วแสบง่าย ลองดูสูตรมิเนอรัลไม่มีน้ำหอมที่ฉลากระบุ zinc oxide หรือ titanium dioxide</p>':'')+
+    choices+
+    '<div class="editor-settings habit-fields"><div class="field"><label for="'+step.id+'-time">เวลาที่สะดวก</label><input id="'+step.id+'-time" name="'+step.id+'-time" type="time" value="'+esc(existing?.time || step.time)+'"></div>'+
+    (step.products.length?'<div class="field"><label for="'+step.id+'-product">ผลิตภัณฑ์ในงาน</label><select id="'+step.id+'-product" name="'+step.id+'-product"><option value="">ใช้ของที่มี</option>'+
+      step.products.map(product=>'<option value="'+product.id+'">'+product.short+'</option>').join('')+'</select></div>':'')+
+    '</div></article>';
+}
+function bodyReview(p) {
+  const plan = p.bodyPlan;
+  return '<span class="kicker">REVIEW YOUR PLAN</span><h2>'+bodyGoals[plan.goal]+'</h2>'+
+    '<p class="subtle">ติ๊กเฉพาะขั้นที่อยากเพิ่ม เลือกเวลาและผลิตภัณฑ์ได้ก่อนบันทึก</p>'+
+    (plan.avoid?'<p class="note">คุณระบุส่วนผสมที่เคยมีปัญหา แผนนี้แสดงประเภทผลิตภัณฑ์เพื่อให้ตรวจฉลากก่อนเลือกสูตร</p>':'')+
+    '<form id="apply-body-form">'+bodySteps(p).map(step=>bodyStepCard(p,step)).join('')+
+    '<div class="actions"><button class="btn" type="submit">'+icon('check')+'เพิ่มขั้นที่เลือกลงปฏิทิน</button></div></form>'+
+    '<details class="ai-card"><summary>'+icon('sparkle')+' ขอความเห็นจาก ChatGPT</summary>'+
+    '<p class="subtle">อ่านข้อความก่อนคัดลอก แล้วเลือกเองว่าจะแนบรูปบริเวณที่ต้องการดูใน ChatGPT หรือไม่</p>'+
+    '<label for="ai-prompt">คำถามของคุณ</label><textarea readonly id="ai-prompt" rows="5">'+esc([
+      'ช่วยทบทวนแผนดูแลผิวกายเพื่อเป้าหมาย '+bodyGoals[plan.goal]+' ผิวของฉัน '+bodyFeel[plan.feel]+'.',
+      plan.avoid?'ส่วนผสมที่เคยมีปัญหา '+plan.avoid:'',
+      'ถ้าฉันแนบรูป ให้บอกเฉพาะสิ่งที่เห็น พร้อมข้อจำกัดจากแสงและมุมภาพ โดยไม่วินิจฉัยจากรูป',
+      'เสนอแผนสั้น ๆ ที่ระบุเวลา วิธีใช้ และตัวอย่างผลิตภัณฑ์จากผู้ผลิตในไทย ช่วยแยกขั้นพื้นฐานกับตัวเลือกเสริม งดสูตรฟอกผิวหรือคำสัญญาว่าจะเปลี่ยนสีผิวเดิม'
+    ].filter(Boolean).join('\n'))+'</textarea><div class="actions"><button type="button" class="btn light small" id="copy-ai">คัดลอกคำถาม</button>'+
+    '<a class="btn small" href="https://chatgpt.com/" target="_blank" rel="noopener">เปิด ChatGPT'+icon('arrow')+'</a></div></details>'+
+    '<div class="sources"><a href="https://www.aad.org/public/everyday-care/skin-care-basics/dry/dermatologists-tips-relieve-dry-skin" target="_blank" rel="noopener">การดูแลผิวแห้ง</a>'+
+    '<a href="https://www.aad.org/public/everyday-care/skin-care-secrets/routine/fade-dark-spots" target="_blank" rel="noopener">ดูแลรอยคล้ำ</a>'+
+    '<a href="https://www.aad.org/public/everyday-care/sun-protection/shade-clothing-sunscreen/how-to-apply-sunscreen" target="_blank" rel="noopener">วิธีใช้กันแดด</a></div>';
+}
+function body() {
+  const p = current();
+  return sectionHead('BODY CARE','แผนผิวกายของ'+esc(p.name),'เลือกเป้าหมาย ดูตัวอย่างผลิตภัณฑ์ แล้วเพิ่มเฉพาะขั้นที่อยากทำ')+
+    '<button class="link-btn" data-page="skin">‹ กลับไปเช็กผิวหน้า</button><div class="grid">'+bodyPlanForm(p)+
+    '<section class="box" id="body-result" tabindex="-1">'+(p.bodyPlan?bodyReview(p):
+      '<div class="badge-icon mint">'+icon('heart')+'</div><h2>แผนของคุณ</h2><p class="subtle">ตอบสองข้อเพื่อดูขั้นตอนและตัวอย่างผลิตภัณฑ์ก่อนเลือกใช้</p>')+'</section></div>';
+}
+function applyBodyPlan(data) {
+  const p = current(), today = dayKey();
+  const selection = new Set(data.getAll('steps'));
+  const selected = bodySteps(p).filter(step=>selection.has(step.id));
+  if (!selected.length) return notify('เลือกอย่างน้อยหนึ่งขั้นตอน');
+  const retained = (p.habits ?? []).filter(task=>!selection.has(task.id));
+  if (retained.length+selected.length>32) return notify('ตารางนี้เก็บได้ 32 งาน ลบงานที่ไม่ได้ใช้ก่อนเพิ่ม');
+  const planned = selected.map(step=>{
+    const existing = p.habits?.find(task=>task.id===step.id);
+    const product = step.products.find(item=>item.id===data.get(step.id+'-product'));
+    const detail = product ? product.short+' · '+step.detail : step.detail;
+    return {id:step.id,title:step.title,time:data.get(step.id+'-time') || step.time,
+      days:existing?.days ?? step.days,once:existing?.once ?? '',since:existing?.since ?? today,detail};
+  });
+  if (update(()=>{p.habits = [...retained,...planned];},'เพิ่มขั้นที่เลือกแล้ว ♡')) {
+    calendarDate = today;
+    goto('calendar');
+  }
+}
+
+function skin() {
+  const p = current(), a = p.answers;
+  return sectionHead('01 / SKIN CHECK','ทำความรู้จักผิวของ'+esc(p.name),'บอกสภาพผิวและเป้าหมาย แล้วรับแผนเช้า–ก่อนนอนที่ใช้เป็นจุดเริ่มต้นได้')+
+    '<div class="box body-entry"><span class="badge-icon mint">'+icon('heart')+'</span><div><h3>อยากดูแลผิวกายด้วย?</h3><p class="subtle">วางแผนให้ผิวชุ่มชื้นหรือสีผิวดูสม่ำเสมอขึ้น</p></div><button class="btn light small" data-page="body">ดูแผนผิวกาย'+icon('arrow')+'</button></div>'+
+    '<div class="grid"><section class="box"><h2>เช็กผิวแบบสั้น ๆ</h2><form id="skin-form">'+
+    '<fieldset class="field"><legend>1. ปกติระหว่างวัน ผิวคุณเป็นแบบไหน?</legend>'+options('type',{balanced:'สบายผิว ไม่ค่อยมัน',dry:'ตึงหรือเป็นขุย',oily:'มันทั่วหน้า',combo:'มันเฉพาะหน้าผาก จมูก คาง',unsure:'ยังไม่แน่ใจ'},a?.type)+'</fieldset>'+
+    '<fieldset class="field"><legend>2. ใช้ผลิตภัณฑ์ใหม่แล้วแสบ แดง หรือคันง่ายไหม?</legend>'+options('sensitive',{yes:'ค่อนข้างง่าย',no:'ไม่ค่อย',unsure:'ยังไม่แน่ใจ'},a?.reaction)+'</fieldset>'+
+    '<fieldset class="field"><legend>3. ตอนนี้อยากดูแลเรื่องไหนก่อน?</legend>'+options('concern',Object.fromEntries(Object.entries(concerns).map(([key,c])=>[key,c.label])),a?.concern)+'</fieldset>'+
+    personalFields(p)+'<div class="actions"><button class="btn" type="submit">'+icon('sparkle')+'สร้างแผนของฉัน</button></div></form><p class="note">ผลอิงจากคำตอบของคุณ ใช้เป็นจุดเริ่มต้นในการดูแลผิว หากอาการปวด แสบ หรือผื่นเป็นต่อเนื่อง ควรปรึกษาแพทย์ผิวหนัง</p></section>'+
+    '<section class="box" id="skin-result" tabindex="-1">'+(a ? results(p) : '<span class="badge-icon mint">'+icon('scan')+'</span><h2 style="margin-top:10px">แผนดูแลผิวของคุณ</h2><p class="subtle">ตอบแบบเช็กผิวเพื่อดูผลและคำแนะนำเฉพาะโปรไฟล์ ระหว่างนี้คุณเริ่มติ๊กรูทีนพื้นฐานได้จากหน้า “วันนี้”</p>')+'</section></div>';
+}
+function results(p) {
+  const a = p.answers;
+  const tips = prefs[a.type];
+  const focus = concerns[a.concern];
+  const gentle = a.sensitive ? ' เลือกสูตร fragrance-free และลองทีละตัว' : ' ลองผลิตภัณฑ์ใหม่ทีละตัวเพื่อสังเกตปฏิกิริยา';
+  const source = 'https://www.aad.org/public/';
+  const items = [
+    ['01 · คลีนเซอร์',tips[0]+'.'+gentle],
+    ['02 · มอยส์เจอไรเซอร์',tips[1]+'. ทาหลังซับหน้าเบา ๆ ขณะที่ผิวยังหมาด'+gentle],
+    ['03 · กันแดด',tips[2]+'. มองหา broad spectrum SPF 30 ขึ้นไป และ water resistant ทาก่อนออกแดดและทาซ้ำทุก 2 ชั่วโมงขณะอยู่กลางแจ้ง รวมถึงหลังว่ายน้ำหรือเหงื่อออก']
+  ];
+  return '<div class="section-top"><div><span class="kicker">YOUR SKIN PLAN</span><h2>'+skinTypes[a.type]+'</h2></div><span class="pill">จากคำตอบของคุณ</span></div>'+
+    '<p class="subtle">'+(a.sensitive?'ผิวมีแนวโน้มระคายเคืองง่าย ควรเริ่มด้วยสูตรอ่อนโยน':a.reaction==='unsure'?'ค่อย ๆ สังเกตว่าผิวตอบสนองต่อผลิตภัณฑ์ใหม่อย่างไร':'เริ่มจากรูทีนพื้นฐาน แล้วสังเกตว่าผิวรู้สึกอย่างไร')+'</p>'+
+    planContext(p)+'<p class="subtle"><strong>เช้า</strong> ล้างหน้า → มอยส์เจอไรเซอร์ → กันแดด<br><strong>ก่อนนอน</strong> ล้างหน้า → มอยส์เจอไรเซอร์</p>'+
+    items.map(([title,detail])=>'<details class="recommend" open><summary>'+title+'</summary><p>'+detail+'</p></details>').join('')+
+    '<details class="recommend" open><summary>โฟกัส · '+focus.label+'</summary><p>'+focus.detail+'</p><p><strong>ติดตามผล</strong> '+focus.message+'</p></details>'+
+    exampleCards(p)+'<div class="actions"><button type="button" class="btn small" id="apply-skin-plan">ใช้แผนนี้ในรูทีน'+icon('arrow')+'</button>'+
+    '<button type="button" class="btn light small" id="photo-checkin">ตั้งวันติดตามผิว</button></div>'+aiCard(p)+
+    '<div class="sources">แหล่งอ้างอิงจาก AAD <a target="_blank" rel="noopener" href="'+source+'everyday-care/skin-care-basics/care/skin-care-budget">พื้นฐานการดูแลผิว</a><a target="_blank" rel="noopener" href="'+source+'everyday-care/sun-protection/shade-clothing-sunscreen/how-to-apply-sunscreen">วิธีทากันแดด</a><a target="_blank" rel="noopener" href="'+source+'diseases/acne/skin-care/tips">การดูแลผิวที่เป็นสิว</a></div>';
+}
+
+function week(p) {
+  const today = new Date();
+  const days = Array.from({length:7},(_,i)=>{
+    const date = new Date(today.getFullYear(),today.getMonth(),today.getDate()-6+i);
+    const key = dayKey(date);
+    return {key,...progressFor(p,key)};
+  });
+  const tracked = days.filter(day=>day.done>0).length;
+  const completed = days.filter(day=>day.done===day.total).length;
+  return '<div class="week">'+days.map(({key,done,total},i)=>
+    '<div class="'+(i===6?'today':'')+'">'+thaiDate(key,{weekday:'short'})+'<strong>'+
+      (i===6 || p.days[key] ? done+'/'+total : '–')+'</strong></div>').join('')+'</div>'+
+    '<p class="note">'+(tracked?'ทำรูทีน '+tracked+' จาก 7 วัน และทำครบ '+completed+' วัน':'เมื่อติ๊กขั้นตอนในรูทีน สรุปความสม่ำเสมอจะแสดงตรงนี้')+'</p>';
+}
+let reviewDraft = null;
+const clockText = (value) => typeof value==='string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+const recurringPlan = (p,slot) => p.routine?.[slot] ?? defaultPlan(p,slot);
+function reviewPrompt(p) {
+  const today = dayKey(), start = shiftDate(today,-6);
+  const diary = p.logs.filter(log=>log.date>=start && log.date<=today).slice(0,14);
+  const counts = Array.from({length:7},(_,i)=>{
+    const date = shiftDate(start,i);
+    const {done,total} = progressFor(p,date);
+    return {date,routine:p.days[date] || date===today ? done+'/'+total : 'ไม่ได้บันทึก',other:checksOn(p,date).length};
+  });
+  const schedule = Object.keys(periods).flatMap(slot=>{
+    const plan = recurringPlan(p,slot);
+    return plan.items.map(item=>({slot,id:item.id,title:item.title,time:item.time || plan.time,detail:item.detail,product:item.product}));
+  });
+  const data = {goal:p.goal || (p.answers?concerns[p.answers.concern].label:''),counts,diary:diary.map(({date,text})=>({date,text})),schedule};
+  return [
+    'ช่วยทบทวนรูทีนผิวจากข้อมูล 7 วันด้านล่าง สรุปเฉพาะสิ่งที่บันทึกไว้และระบุถ้าข้อมูลยังไม่พอ',
+    'ตอบเป็น JSON เท่านั้น ใช้รูปแบบ {"summary":"สรุปภาษาไทยไม่เกิน 600 ตัวอักษร","changes":[{"slot":"am","id":"cleanse","time":"07:30","detail":"โน้ตภาษาไทยไม่เกิน 220 ตัวอักษร","reason":"เหตุผลไม่เกิน 160 ตัวอักษร"}]}',
+    'เลือกเฉพาะขั้นที่มี slot และ id ตรงกับ schedule แนะนำเปลี่ยนเวลา (HH:MM) หรือโน้ตตามหลักฐานจริง ใส่ได้เพียงอย่างเดียวถ้าอีกอย่างไม่เปลี่ยน จำกัด 8 ข้อ ถ้าคงแผนเดิมให้ส่ง changes เป็น []',
+    'อย่าวินิจฉัยจากบันทึกหรือเสนอให้เริ่มยา สารออกฤทธิ์ หรือสูตรฟอกผิว ถ้ามีอาการแสบหรือผื่นต่อเนื่อง ให้กล่าวถึงการปรึกษาแพทย์หรือเภสัชกรใน summary',
+    JSON.stringify(data,null,2)
+  ].join('\n');
+}
+function reviewChanges(p, reply) {
+  if (typeof reply?.summary!=='string' || !reply.summary.trim() || reply.summary.length>600 ||
+      !Array.isArray(reply.changes) || reply.changes.length>8) throw new Error('Invalid review');
+  const seen = new Set();
+  const changes = reply.changes.map(change=>{
+    const {slot,id,time,detail,reason} = change ?? {};
+    if (!Object.hasOwn(periods,slot) || !validId(id) ||
+        (time===undefined && detail===undefined) || (time!==undefined && !clockText(time)) ||
+        (detail!==undefined && (typeof detail!=='string' || !detail.trim() || detail.length>220)) ||
+        (reason!==undefined && (typeof reason!=='string' || reason.length>160))) throw new Error('Invalid change');
+    const plan = recurringPlan(p,slot);
+    const item = plan.items.find(item=>item.id===id);
+    const key = slot+'-'+id;
+    if (!item || seen.has(key)) throw new Error('Unknown or duplicate step');
+    seen.add(key);
+    return {slot,id,key,title:item.title,oldTime:item.time || plan.time,oldDetail:item.detail,time,detail,reason};
+  }).filter(change=>(change.time!==undefined && change.time!==change.oldTime) ||
+    (change.detail!==undefined && change.detail!==change.oldDetail));
+  return {summary:reply.summary,changes};
+}
+function previewReview(data) {
+  const text = data.get('reply').trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i,'$1');
+  try {
+    reviewDraft = reviewChanges(current(),JSON.parse(text));
+  } catch {
+    return notify('อ่านคำตอบไม่ได้ วาง JSON ทั้งก้อนจาก ChatGPT และตรวจว่ารูทีนยังตรงกับที่ส่งไป');
+  }
+  render();
+  $('review-result').focus();
+}
+function applyReview(data) {
+  const selected = new Set(data.getAll('change'));
+  const p = current();
+  const changes = reviewDraft?.changes.filter(change=>selected.has(change.key)) ?? [];
+  if (!changes.length) return notify('เลือกข้อเสนอที่จะใช้ก่อน');
+  if (changes.some(change=>{
+    const plan = recurringPlan(p,change.slot);
+    const item = plan.items.find(item=>item.id===change.id);
+    return !item || (item.time || plan.time)!==change.oldTime || item.detail!==change.oldDetail;
+  })) return notify('รูทีนเปลี่ยนแล้ว กรุณาสร้างคำถามและทบทวนใหม่');
+  if (update(()=>{
+    const plans = p.routine ??= {};
+    for (const change of changes) {
+      const plan = plans[change.slot] ??= defaultPlan(p,change.slot);
+      const item = plan.items.find(item=>item.id===change.id);
+      if (change.time!==undefined) item.time = change.time;
+      if (change.detail!==undefined) item.detail = change.detail;
+    }
+    refreshDay(p,dayKey());
+  },'ปรับเฉพาะข้อที่เลือกแล้ว ♡')) goto('home');
+}
+function review() {
+  const p = current(), result = reviewDraft;
+  const override = p.todayRoutine?.date===dayKey() && Object.keys(periods).some(slot=>p.todayRoutine[slot]);
+  return sectionHead('WEEKLY REVIEW','ทบทวนแผนของ'+esc(p.name),'ดูบันทึก 7 วัน แล้วเลือกเองว่าจะปรับรูทีนตรงไหน')+
+    '<div class="grid"><section class="box"><h2>1. ขอให้ ChatGPT ช่วยทบทวน</h2>'+
+    '<p class="subtle">คำถามมีเป้าหมาย รูทีน สถานะงาน และไดอารีล่าสุด อ่านก่อนคัดลอกไปวางใน ChatGPT</p>'+
+    '<div class="field"><label for="ai-prompt">คำถามจากบันทึก 7 วัน</label><textarea readonly id="ai-prompt" rows="6">'+esc(reviewPrompt(p))+'</textarea></div>'+
+    '<div class="actions"><button type="button" class="btn light small" id="copy-ai">คัดลอกคำถาม</button><a class="btn small" href="https://chatgpt.com/" target="_blank" rel="noopener">เปิด ChatGPT'+icon('arrow')+'</a></div>'+
+    '<form id="review-form"><div class="field"><label for="review-reply">วางคำตอบ JSON จาก ChatGPT</label><textarea id="review-reply" name="reply" required maxlength="16000" rows="4"></textarea></div>'+
+    '<div class="actions"><button type="submit" class="btn light">ดูข้อเสนอก่อนใช้</button></div></form></section>'+
+    '<section class="box" id="review-result" tabindex="-1"><h2>2. ตรวจและเลือกข้อที่จะใช้</h2>'+
+    (result?'<p class="note">'+esc(result.summary)+'</p>':'<p class="subtle">วางคำตอบเพื่อดูสรุปและเทียบรูทีนก่อนกับหลัง</p>')+
+    (result?.changes.length ? '<form id="apply-review-form">'+result.changes.map(change=>
+      '<article class="body-step"><label class="body-choice"><input type="checkbox" name="change" value="'+change.key+'">'+
+      '<span><strong>'+esc(change.title)+'</strong><small>'+periods[change.slot]+'</small></span></label>'+
+      (change.time!==undefined && change.time!==change.oldTime?'<p><strong>เวลา</strong> '+esc(displayTime(change.oldTime))+' → '+esc(displayTime(change.time))+'</p>':'')+
+      (change.detail!==undefined && change.detail!==change.oldDetail?'<p class="subtle"><strong>เดิม</strong> '+esc(change.oldDetail || 'ไม่มีโน้ต')+'</p><p><strong>ข้อเสนอ</strong> '+esc(change.detail)+'</p>':'')+
+      (change.reason?'<p class="subtle">'+esc(change.reason)+'</p>':'')+'</article>').join('')+
+      (override?'<p class="note">ข้อเสนอใช้กับรูทีนประจำ ส่วนขั้นที่ตั้งเฉพาะวันนี้จะยังใช้ตามตารางวันนี้</p>':'')+
+      '<div class="actions"><button type="submit" class="btn">ใช้ข้อที่เลือกกับรูทีนประจำ</button></div></form>':
+      result?'<p class="subtle">ไม่มีข้อเสนอให้แก้รูทีน</p>':'')+'</section></div>';
+}
+
+function goals() {
+  const p = current(), suggested = p.answers ? concerns[p.answers.concern] : null;
+  return sectionHead('02 / SKIN JOURNAL','เป้าหมายผิวของ'+esc(p.name),'เลือกความเปลี่ยนแปลงที่อยากสังเกต แล้วบันทึกสั้น ๆ ระหว่างทาง')+
+    '<div class="grid"><div class="stack"><section class="box"><h2>เป้าหมายของฉัน</h2>'+
+    (p.goalDate?'<small>เริ่มเป้าหมาย '+thaiDate(p.goalDate)+'</small>':'<p class="subtle">เริ่มจากเป้าหมายเดียวที่สังเกตได้</p>')+
+    '<form id="goal-form"><div class="field"><label for="goal">อยากให้ผิวเปลี่ยนอย่างไร?</label><input type="text" name="goal" id="goal" maxlength="100" required placeholder="เช่น หลังล้างหน้า ผิวไม่ตึงเหมือนเดิม" value="'+esc(p.goal)+'"></div>'+
+    (suggested?'<button type="button" class="link-btn" id="suggest-goal">ใช้เป้าหมายจากผลเช็กผิว · '+suggested.label+'</button>':'')+
+    '<div class="actions"><button type="submit" class="btn">บันทึกเป้าหมาย</button></div></form></section>'+
+    '<section class="box"><h2>ความสม่ำเสมอ 7 วัน</h2><p class="subtle">จำนวนขั้นตอนที่ทำในแต่ละวัน</p>'+week(p)+'<div class="actions"><button class="btn light small" data-page="review">'+icon('sparkle')+'ให้ AI ช่วยทบทวนแผน</button></div></section>'+
+    '<section class="box"><h2>ไดอารีผิว</h2><form id="log-form"><div class="field"><label for="log">วันนี้สังเกตอะไรบ้าง?</label><textarea id="log" name="log" rows="3" maxlength="350" required placeholder="เช่น แก้มตึงน้อยลงหลังทาครีม"></textarea></div><div class="actions"><button class="btn" type="submit">เพิ่มบันทึก</button></div></form>'+
+    '<div style="margin-top:10px">'+p.logs.map(log=>'<article class="log"><small>'+thaiDate(log.date)+'</small><p>'+esc(log.text)+'</p><button class="link-btn" data-delete-log="'+log.id+'">ลบบันทึก</button></article>').join('')+'</div></section></div>'+
+    '<section class="box"><div class="goal-head"><div class="badge-icon mint">'+icon('camera')+'</div><div><h2>รูปติดตามผิว</h2><small>ถ่ายมุมและแสงเดิมเพื่อเปรียบเทียบ</small></div></div><p class="subtle">เก็บได้ 4 รูปต่อคน รูปอยู่ในเบราว์เซอร์นี้และใช้เปรียบเทียบด้วยตัวเอง</p>'+
+    '<div class="actions"><button type="button" class="btn light" id="pick-photo" '+(p.photos.length>=4?'disabled':'')+'>'+icon('camera')+'ถ่ายหรือเลือกรูป</button><input id="photo" type="file" accept="image/*" hidden></div>'+
+    '<div class="photo-grid">'+p.photos.map(photo=>'<figure><img class="photo" src="'+esc(photo.src)+'" alt="รูปติดตามผิววันที่ '+thaiDate(photo.date)+'"><figcaption><small>'+thaiDate(photo.date)+'</small><button class="link-btn" data-delete-photo="'+photo.id+'">ลบรูป</button></figcaption></figure>').join('')+'</div></section></div>';
+}
+function profile() {
+  const installHelp = location.protocol==='https:' && !navigator.standalone
+    ? '<details class="box install-help"><summary>เพิ่ม Glow Together บนหน้าจอโฮม iPhone</summary><p class="subtle">เปิดหน้านี้ใน Safari กดแชร์ เลือก “เพิ่มไปยังหน้าจอโฮม” เปิด “เปิดเป็นเว็บแอป” แล้วกดเพิ่ม</p></details>'
+    : '';
+  return sectionHead('03 / OUR LITTLE CLUB','โปรไฟล์ของเราสองคน','สลับโปรไฟล์จากด้านบนเพื่อดูรูทีนและเป้าหมายของแต่ละคน')+
+    '<div class="grid"><section class="box"><h2>ตั้งชื่อโปรไฟล์</h2><form id="names-form">'+state.people.map((p,i)=>'<div class="field"><label for="name-'+i+'">'+avatar(p,i)+' '+(i===0?'โปรไฟล์ของฉัน':'โปรไฟล์ของแฟน')+'</label><input id="name-'+i+'" name="name-'+i+'" type="text" required maxlength="24" value="'+esc(p.name)+'"></div>').join('')+'<div class="actions"><button type="submit" class="btn">บันทึกชื่อ</button></div></form></section>'+
+    '<section class="box"><div class="goal-head"><div class="badge-icon">'+icon('heart')+'</div><h2>สำรองและย้ายข้อมูล</h2></div>'+
+    '<p>เก็บไฟล์สำรองของทั้งสองโปรไฟล์ไว้ในเครื่อง ใช้กู้คืนหรือย้ายรูทีน เป้าหมาย บันทึก และรูปติดตามผิวได้</p>'+
+    '<div class="actions"><button type="button" class="btn" id="backup-export">ดาวน์โหลดไฟล์สำรอง</button>'+
+    '<button type="button" class="btn light" id="backup-import">นำเข้าไฟล์สำรอง</button><input type="file" id="backup-file" accept=".json,application/json" hidden></div>'+
+    '<p class="note">ข้อมูลในแอปอยู่ในเบราว์เซอร์นี้ ไฟล์สำรองรวมรูปใบหน้าที่คุณเก็บไว้ ควรเก็บไฟล์ในที่ส่วนตัว</p></section>'+installHelp+'</div>';
+}
+
+function render() {
+  const navPage = ({routine:'home',body:'skin',reminders:'calendar',review:'goals'})[page] ?? page;
+  $('nav').innerHTML = Object.entries(routes).filter(([,entry])=>entry).map(([id,[glyph,label]])=>'<button data-page="'+id+'" '+(navPage===id?'class="active" aria-current="page"':'')+'>'+icon(glyph)+label+'</button>').join('');
+  $('profiles').innerHTML = state.people.map((p,i)=>'<button data-profile="'+i+'" aria-pressed="'+(state.active===i)+'" class="'+(state.active===i?'active':'')+'" title="'+esc(p.name)+'">'+avatar(p,i)+'<span style="overflow:hidden;text-overflow:ellipsis">'+esc(p.name)+'</span></button>').join('');
+  $('main').innerHTML = ({home,skin,body,calendar,goals,profile,routine,reminders,review})[page]();
+}
+
+function beginRoutine() {
+  const p = current();
+  const todayOnly = p.todayRoutine?.date===dayKey() && p.todayRoutine[period];
+  draft = {plan:structuredClone(planFor(p,period)),scope:todayOnly?'today':'daily'};
+  goto('routine');
+}
+
+function refreshDay(p, date) {
+  const day = p.days[date];
+  if (!day) return;
+  day.planned = plannedKeys(p,date);
+  for (const time of Object.keys(periods)) {
+    day[time] = day[time].filter(id=>day.planned[time].includes(id));
+  }
+}
+
+function saveRoutine() {
+  if (draft.loadingPhoto) return notify('กำลังเตรียมรูปผลิตภัณฑ์ กรุณารอสักครู่');
+  const {plan,scope} = draft;
+  if (plan.items.some(item=>!item.title.trim())) return notify('ใส่ชื่อให้ครบทุกขั้นตอน');
+  const p = current(), date = dayKey();
+  const saved = {
+    time:plan.time,
+    items:plan.items.map(item=>({...item,title:item.title.trim(),product:item.product.trim(),detail:item.detail.trim()}))
+  };
+  if (update(()=>{
+    if (scope==='today') {
+      if (p.todayRoutine?.date!==date) p.todayRoutine = {date};
+      p.todayRoutine[period] = saved;
+    } else {
+      (p.routine ??= {})[period] = saved;
+      if (p.todayRoutine?.date===date) delete p.todayRoutine[period];
+    }
+    refreshDay(p,date);
+  }, 'บันทึกรูทีนแล้ว ♡')) goto('home');
+}
+
+function editorClick(btn) {
+  const itemId = btn.closest('[data-item]')?.dataset.item;
+  const items = draft.plan.items;
+  const index = items.findIndex(item=>item.id===itemId);
+  if (btn.id==='add-step' && items.length<maxSteps) {
+    const id = crypto.randomUUID();
+    items.push({id,title:'',product:'',detail:'',time:'',photo:''});
+    render();
+    $('title-'+id).focus();
+  } else if (btn.id==='reset-plan') {
+    draft.plan = defaultPlan(current(),period);
+    render();
+  } else if (index>=0) {
+    if (btn.hasAttribute('data-pick-product')) {
+      btn.parentElement.querySelector('[data-product-file]').click();
+      return;
+    }
+    if (btn.hasAttribute('data-remove-product')) items[index].photo = '';
+    if (btn.hasAttribute('data-remove-step') && items.length>1) items.splice(index,1);
+    const other = index+Number(btn.dataset.move);
+    if (Number.isInteger(other) && other>=0 && other<items.length) {
+      [items[index],items[other]] = [items[other],items[index]];
+    }
+    render();
+  }
+}
+
+document.addEventListener('click', (event) => {
+  const btn = event.target.closest('button');
+  if (!btn) return;
+  const {page:target,profile:index,step,deleteLog,deletePhoto} = btn.dataset;
+  if (target) goto(target);
+  if (index !== undefined && state.active!==Number(index)) {
+    if (page==='routine') goto('home');
+    habitDraft = null;
+    reviewDraft = null;
+    showCompleted = false;
+    update(()=>{state.active = Number(index);});
+  }
+  const {habit, calendarDate:date, week:jump, preset, editHabit, deleteHabit} = btn.dataset;
+  if (btn.id==='apply-skin-plan') return applySkinPlan();
+  if (btn.id==='copy-ai') return copyAiPrompt();
+  if (btn.id==='photo-checkin') {
+    calendarDate = dayKey();
+    habitDraft = structuredClone(habitPresets.photo);
+    habitDraft.detail = concerns[current().answers.concern].message;
+    goto('calendar');
+    $('habit-editor').focus();
+  }
+  if (btn.id==='open-calendar') {
+    calendarDate = dayKey();
+    goto('calendar');
+  }
+  if (habit) return toggleHabit(habit);
+  if (date || jump) {
+    calendarDate = date || shiftDate(calendarDate,Number(jump));
+    render();
+  }
+  if (preset || editHabit) {
+    const template = preset==='custom' ? {title:'',time:'',detail:'',days:[weekday(calendarDate)]} : habitPresets[preset];
+    habitDraft = structuredClone(editHabit ? current().habits.find(h=>h.id===editHabit) : template);
+    render();
+    $('habit-editor').focus();
+  }
+  if (btn.id==='cancel-habit') {
+    habitDraft = null;
+    render();
+  }
+  if (deleteHabit && window.confirm('ลบงานนี้ออกจากตารางหรือไม่?')) {
+    habitDraft = null;
+    update(()=>{current().habits = current().habits.filter(h=>h.id!==deleteHabit);},'ลบงานจากตารางแล้ว');
+  }
+  if (btn.dataset.editPeriod) {
+    period = btn.dataset.editPeriod;
+    return beginRoutine();
+  }
+  if (page==='routine' && btn.type==='button') return editorClick(btn);
+  if (step) {
+    const p = current(), date = dayKey(), slot = btn.dataset.slot;
+    const isDone = p.days[date]?.[slot]?.includes(step) ?? false;
+    if (update(()=>{
+      const day = p.days[date] ??= {am:[],pm:[]};
+      day[slot] = isDone ? day[slot].filter(key=>key!==step) : [...day[slot],step];
+      refreshDay(p,date);
+    })) focusAfterCheck('[data-slot="'+slot+'"][data-step="'+step+'"]');
+  }
+  if (btn.id==='suggest-goal') $('goal').value = concerns[current().answers.concern].label;
+  if (btn.id==='backup-export') downloadBackup();
+  if (btn.id==='backup-import') $('backup-file').click();
+  if (btn.id==='pick-photo') $('photo').click();
+  if (deleteLog && window.confirm('ลบบันทึกนี้ใช่ไหม?')) update(()=>{current().logs = current().logs.filter(log=>log.id!==deleteLog);},'ลบบันทึกแล้ว');
+  if (deletePhoto && window.confirm('ลบรูปนี้ใช่ไหม?')) update(()=>{current().photos = current().photos.filter(photo=>photo.id!==deletePhoto);},'ลบรูปแล้ว');
+});
+
+document.addEventListener('submit', (event) => {
+  const form = event.target;
+  event.preventDefault();
+  if (form.id==='routine-form') return saveRoutine();
+  const data = new FormData(form), p = current();
+  if (form.id==='habit-form') return saveHabit(data);
+  if (form.id==='reminder-form') return exportReminders(data);
+  if (form.id==='review-form') return previewReview(data);
+  if (form.id==='apply-review-form') return applyReview(data);
+  if (form.id==='body-form') {
+    if (update(()=>{
+      p.bodyPlan = {goal:data.get('goal'),feel:data.get('feel'),avoid:data.get('avoid').trim()};
+    })) $('body-result').focus();
+    return;
+  }
+  if (form.id==='apply-body-form') return applyBodyPlan(data);
+  if (form.id==='skin-form') {
+    if (update(()=>{
+      p.answers = {type:data.get('type'),reaction:data.get('sensitive'),sensitive:data.get('sensitive')==='yes',concern:data.get('concern')};
+      p.personal = {age:data.get('age'),texture:data.get('texture'),budget:data.get('budget'),current:data.get('current').trim(),avoid:data.get('avoid').trim()};
+    },'สร้างแผนให้คุณแล้ว ♡')) {
+      $('skin-result').focus();
+    }
+  }
+  if (form.id==='goal-form') {
+    const goal = data.get('goal').trim();
+    if (!goal) return notify('พิมพ์เป้าหมายก่อนบันทึก');
+    update(()=>{if (p.goal!==goal) p.goalDate=dayKey(); p.goal=goal;},'บันทึกเป้าหมายแล้ว ♡');
+  }
+  if (form.id==='log-form') {
+    const text = data.get('log').trim();
+    if (!text) return notify('พิมพ์บันทึกก่อนกดเพิ่ม');
+    update(()=>{p.logs.unshift({id:crypto.randomUUID(),date:dayKey(),text});},'เพิ่มบันทึกแล้ว');
+  }
+  if (form.id==='names-form') {
+    const names = state.people.map((_,i)=>data.get('name-'+i).trim());
+    if (names.some(name=>!name)) return notify('ใส่ชื่อให้ครบทั้งสองโปรไฟล์');
+    update(()=>{state.people.forEach((person,i)=>{person.name=names[i];});},'บันทึกชื่อแล้ว');
+  }
+});
+
+document.addEventListener('toggle', (event)=>{
+  if (event.target.classList.contains('timeline-done') && event.target.isConnected) showCompleted = event.target.open;
+},true);
+
+document.addEventListener('input', (event)=>{
+  const field = event.target;
+  if (!draft || !field.closest('#routine-form')) return;
+  if (field.id==='routine-time') draft.plan.time = field.value;
+  if (field.id==='routine-scope') draft.scope = field.value;
+  if (field.dataset.key) {
+    const item = draft.plan.items.find(item=>item.id===field.closest('[data-item]').dataset.item);
+    item[field.dataset.key] = field.value;
+  }
+});
+
+async function resizedPhoto(file, size) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1, size/Math.max(img.width,img.height));
+    canvas.width = Math.max(1,Math.round(img.width*scale));
+    canvas.height = Math.max(1,Math.round(img.height*scale));
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#fff';
+    context.fillRect(0,0,canvas.width,canvas.height);
+    context.drawImage(img,0,0,canvas.width,canvas.height);
+    return canvas.toDataURL('image/jpeg',.78);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+document.addEventListener('change', async (event) => {
+  const input = event.target;
+  if (input.id==='habit-repeat') {
+    const once = input.value==='once';
+    $('habit-weekdays').hidden = once;
+    $('habit-single-date').hidden = !once;
+    $('habit-date').disabled = !once;
+    $('habit-date').required = once;
+    return;
+  }
+  if (input.id==='backup-file') return restoreBackup(input);
+  const isProduct = input.hasAttribute('data-product-file');
+  if (input.id!=='photo' && !isProduct) return;
+  const file = input.files[0], index = state.active;
+  if (!file) return;
+  input.value='';
+  if ((file.type && !file.type.startsWith('image/')) || file.size>25*1024*1024) {
+    return notify('เลือกไฟล์รูปขนาดไม่เกิน 25 MB');
+  }
+  const editing = draft;
+  const item = isProduct && editing?.plan.items.find(item=>item.id===input.closest('[data-item]').dataset.item);
+  if (item) editing.loadingPhoto = (editing.loadingPhoto ?? 0)+1;
+  try {
+    const photo = await resizedPhoto(file,isProduct?288:720);
+    if (isProduct) {
+      if (draft===editing && editing?.plan.items.includes(item)) {
+        item.photo = photo;
+        render();
+      }
+      return;
+    }
+    if (state.people[index].photos.length>=4) return notify('เก็บรูปได้ 4 รูปต่อโปรไฟล์');
+    update(()=>{state.people[index].photos.unshift({id:crypto.randomUUID(),date:dayKey(),src:photo});},'บันทึกรูปในเครื่องแล้ว');
+  } catch {
+    notify('เปิดไฟล์รูปนี้ไม่ได้ ลองเลือกรูปอื่น');
+  } finally {
+    if (item) editing.loadingPhoto--;
+  }
+});
+
+window.addEventListener('hashchange',()=>{
+  const hash = location.hash.slice(1);
+  const target = Object.hasOwn(routes,hash) ? hash : 'home';
+  if (target !== page) goto(target);
+});
+$('logoIcon').innerHTML = icon('sparkle');
+const initialPage = location.hash.slice(1);
+page = initialPage!=='routine' && Object.hasOwn(routes,initialPage) ? initialPage : 'home';
+render();
+
+if (globalThis.isSecureContext && location.protocol!=='file:' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}

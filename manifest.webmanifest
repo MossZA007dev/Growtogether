@@ -1,0 +1,12 @@
+{
+  "id": "./",
+  "name": "Glow Together",
+  "short_name": "Glow Together",
+  "lang": "th",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8f8f0",
+  "theme_color": "#f8f8f0",
+  "icons": [{"src":"touch-icon.png","sizes":"180x180","type":"image/png"}]
+}
