@@ -2,7 +2,7 @@
 
 const root = self.registration.scope;
 const prefix = 'glow-together:'+root+':';
-const cacheName = prefix+'v4';
+const cacheName = prefix+'v5';
 const files = new Map(['','app.js','ritual.svg','touch-icon.png','manifest.webmanifest'].map(path=>[new URL(path,root).href,path]));
 
 self.addEventListener('install', event=>{

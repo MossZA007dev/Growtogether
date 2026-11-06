@@ -275,6 +275,7 @@ const habitPresets = {
   photo:{title:'ถ่ายรูปติดตามผิว',time:'08:00',days:[6],detail:'ถ่ายมุมและแสงเดิม แล้วเก็บไว้ที่หน้าเป้าหมาย'}
 };
 let calendarDate = dayKey();
+let calendarView = 'week';
 let habitDraft = null;
 const checksOn = (p,key) => p.habitChecks?.[key] ?? [];
 function habitsOn(p,key) {
@@ -383,21 +384,84 @@ function exportReminders(data) {
   notify('ดาวน์โหลดไฟล์เตือนแล้ว เปิดไฟล์แนบใน Mail เพื่อนำเข้า Calendar');
 }
 
-function calendar() {
-  const p = current(), today = dayKey(), start = shiftDate(calendarDate,-weekday(calendarDate));
-  const end = shiftDate(start,6), tasks = calendarTimeline(p,calendarDate);
-  return sectionHead('WEEKLY CARE','ปฏิทินของ'+esc(p.name),'วางตารางดูแลตัวเองตามวันที่สะดวก แล้วเช็กงานของวันนี้ได้เลย')+
-    '<div class="grid calendar-grid"><div class="stack"><section class="box"><div class="calendar-head">'+
-    '<button type="button" class="btn light small" data-week="-7" aria-label="สัปดาห์ก่อน">‹</button><strong>'+thaiDate(start)+' – '+thaiDate(end)+'</strong>'+
-    '<button type="button" class="btn light small" data-week="7" aria-label="สัปดาห์ถัดไป">›</button></div>'+
-    '<div class="calendar-week" aria-label="เลือกวัน">'+weekdays.map((label,index)=>{
-      const key = shiftDate(start,index), count = calendarTimeline(p,key).length;
+function monthDates(key) {
+  const first = key.slice(0,7)+'-01';
+  const date = new Date(first+'T12:00:00');
+  const total = new Date(date.getFullYear(),date.getMonth()+1,0).getDate();
+  return [
+    ...Array(weekday(first)).fill(null),
+    ...Array.from({length:total},(_,index)=>shiftDate(first,index))
+  ];
+}
+
+function shiftMonth(key, offset) {
+  const date = new Date(key+'T12:00:00'), day = date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth()+offset);
+  const last = new Date(date.getFullYear(),date.getMonth()+1,0).getDate();
+  date.setDate(Math.min(day,last));
+  return dayKey(date);
+}
+
+const monthStatusLabels = {complete:'รูทีนครบ',partial:'ทำบางส่วนหรือข้าม',pending:'ยังไม่ทำ'};
+function monthRoutineStatus(tasks) {
+  const routine = tasks.filter(task=>task.slot);
+  if (!routine.length) return '';
+  if (routine.every(task=>task.status==='done')) return 'complete';
+  return routine.some(task=>task.status!=='pending') ? 'partial' : 'pending';
+}
+
+function calendarPicker(p,today) {
+  const monthly = calendarView==='month';
+  const start = shiftDate(calendarDate,-weekday(calendarDate));
+  const title = monthly ? thaiDate(calendarDate,{month:'long',year:'numeric'}) :
+    thaiDate(start)+' – '+thaiDate(shiftDate(start,6));
+  const periodLabel = monthly?'เดือน':'สัปดาห์';
+  const dates = monthly ? monthDates(calendarDate) : weekdays.map((_,index)=>shiftDate(start,index));
+  return '<div class="calendar-picker" id="calendar-picker" tabindex="-1">'+
+    '<div class="calendar-view-switch" aria-label="มุมมองปฏิทิน">'+
+    '<button type="button" class="btn light small" data-calendar-view="week" aria-pressed="'+!monthly+'">รายสัปดาห์</button>'+
+    '<button type="button" class="btn light small" data-calendar-view="month" aria-pressed="'+monthly+'">ดูทั้งเดือน</button></div>'+
+    '<div class="calendar-head"><button type="button" class="btn light small" data-calendar-jump="-1" aria-label="'+periodLabel+'ก่อน">‹</button>'+
+    '<strong aria-live="polite">'+title+'</strong>'+
+    '<button type="button" class="btn light small" data-calendar-jump="1" aria-label="'+periodLabel+'ถัดไป">›</button></div>'+
+    '<div class="calendar-week'+(monthly?' calendar-month':'')+'" aria-label="เลือกวัน">'+
+    (monthly?weekdays.map(label=>'<small class="month-weekday" aria-hidden="true">'+label+'</small>').join(''):'')+
+    dates.map(key=>{
+      if (!key) return '<span class="month-empty" aria-hidden="true"></span>';
+      const tasks = calendarTimeline(p,key);
       const hasPhotos = photosOn(p,key).length>0;
-      return '<button type="button" data-calendar-date="'+key+'" aria-label="'+thaiDate(key,{weekday:'long',day:'numeric',month:'long'})+(count?' '+count+' งาน':'')+(hasPhotos?' มีรูปผิว':'')+'" aria-pressed="'+(key===calendarDate)+'">'+
-        '<small>'+label+'</small><strong>'+Number(key.slice(-2))+'</strong><span>'+(hasPhotos?icon('camera'):'')+(count?count+' งาน':hasPhotos?'รูป':'·')+'</span></button>';
+      const status = monthly && key<=today ? monthRoutineStatus(tasks) : '';
+      const label = thaiDate(key,{weekday:'long',day:'numeric',month:'long'})+
+        (status?' · '+monthStatusLabels[status]:'')+(tasks.length?' · '+tasks.length+' งาน':'')+(hasPhotos?' · มีรูปผิว':'');
+      const marker = monthly ? (status?'<i class="calendar-dot '+status+'" aria-hidden="true"></i>':'') :
+        (tasks.length?tasks.length+' งาน':hasPhotos?'รูป':'·');
+      return '<button type="button" data-calendar-date="'+key+'" aria-label="'+label+'" aria-pressed="'+(key===calendarDate)+'"'+
+        (key===today?' aria-current="date"':'')+'>'+
+        (monthly?'':'<small>'+weekdays[weekday(key)]+'</small>')+'<strong>'+Number(key.slice(-2))+'</strong>'+
+        '<span>'+(hasPhotos?icon('camera'):'')+marker+'</span></button>';
     }).join('')+'</div>'+
-    '<div class="section-top calendar-selected"><div><h2>'+thaiDate(calendarDate,{weekday:'long',day:'numeric',month:'long'})+'</h2></div>'+
-    (calendarDate===today?'<span class="pill">วันนี้</span>':'<button type="button" class="link-btn" data-calendar-date="'+today+'">กลับวันนี้</button>')+'</div>'+
+    (monthly?'<div class="calendar-legend" aria-label="ความหมายของสัญลักษณ์">'+
+      Object.entries(monthStatusLabels).map(([status,label])=>'<span><i class="calendar-dot '+status+'" aria-hidden="true"></i>'+label+'</span>').join('')+
+      '<span>'+icon('camera')+'มีรูปผิว</span></div>':'')+'</div>';
+}
+
+function calendar() {
+  const p = current(), today = dayKey(), tasks = calendarTimeline(p,calendarDate);
+  const monthly = calendarView==='month';
+  const routine = tasks.filter(task=>task.slot);
+  const done = tasks.filter(task=>task.status==='done').length;
+  return sectionHead('CALENDAR','ปฏิทินของ'+esc(p.name),'เลือกวันเพื่อดูงานที่ทำ รูทีน และบันทึกรูปผิว')+
+    (monthly?'<section class="box calendar-full">'+calendarPicker(p,today)+'</section>':'')+
+    '<div class="grid calendar-grid"><div class="stack"><section class="box">'+
+    (monthly?'':calendarPicker(p,today))+
+    '<div class="section-top calendar-selected"><div><h2 id="calendar-day-detail" tabindex="-1">'+
+    thaiDate(calendarDate,{weekday:'long',day:'numeric',month:'long'})+'</h2>'+
+    (tasks.length?'<p class="subtle">เสร็จ '+done+'/'+tasks.length+' งาน'+
+      (routine.length?' · รูทีน '+routine.filter(task=>task.status==='done').length+'/'+routine.length:'')+'</p>':'')+
+    '</div><div class="calendar-detail-actions">'+
+    (calendarDate===today?'<span class="pill">วันนี้</span>':'<button type="button" class="link-btn" data-calendar-date="'+today+'">กลับวันนี้</button>')+
+    (monthly?'<button type="button" class="link-btn" id="calendar-back-to-month">↑ ดูทั้งเดือน</button>':'')+'</div></div>'+
     calendarPhotoDiary(p,calendarDate)+
     (tasks.length?'<ul class="steps calendar-tasks">'+tasks.map(task=>timelineRow(task,false,calendarDate===today)).join('')+'</ul>':
       '<p class="subtle">ไม่มีตารางที่บันทึกไว้สำหรับวันนี้</p>')+
@@ -1254,7 +1318,7 @@ document.addEventListener('click', (event) => {
     showCompleted = showSkipped = false;
     update(()=>{state.active = Number(index);});
   }
-  const {task,skipTask,calendarDate:date,week:jump,preset,editHabit,deleteHabit} = btn.dataset;
+  const {task,skipTask,calendarDate:date,calendarJump:jump,calendarView:view,preset,editHabit,deleteHabit} = btn.dataset;
   if (btn.id==='start-morning') return startMorning();
   if (btn.id==='undo-morning-start') {
     if (update(()=>{delete current().morningStart;},'คืนเวลารูทีนเช้าของวันนี้แล้ว')) $('start-morning')?.focus();
@@ -1275,9 +1339,23 @@ document.addEventListener('click', (event) => {
     goto('calendar');
   }
   if (task || skipTask) return changeTaskStatus(task || skipTask,skipTask?'skip':'check');
-  if (date || jump) {
-    calendarDate = date || shiftDate(calendarDate,Number(jump));
+  if (view) {
+    calendarView = view;
     render();
+    document.querySelector('[data-calendar-view="'+view+'"]').focus();
+    return;
+  }
+  if (date || jump) {
+    calendarDate = date || (calendarView==='month'
+      ? shiftMonth(calendarDate,Number(jump)) : shiftDate(calendarDate,7*Number(jump)));
+    render();
+    if (date && calendarView==='month') $('calendar-day-detail').focus();
+    else document.querySelector(jump ? '[data-calendar-jump="'+jump+'"]' : '[data-calendar-date="'+date+'"]').focus();
+    return;
+  }
+  if (btn.id==='calendar-back-to-month') {
+    $('calendar-picker').focus();
+    return;
   }
   if (preset || editHabit) {
     const template = preset==='custom' ? {title:'',time:'',detail:'',days:[weekday(calendarDate)]} : habitPresets[preset];
