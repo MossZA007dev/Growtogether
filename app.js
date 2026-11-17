@@ -711,6 +711,27 @@ function cabinetSummary(p) {
     '<button type="button" class="link-btn" data-page="cabinet">เปิดตู้ของฉัน'+icon('arrow')+'</button></section>';
 }
 
+function cabinetShelf(p) {
+  const products = p.products ?? [];
+  const groups = [
+    {title:'CLEANSE',kinds:['cleanse'],side:'left'},
+    {title:'TREAT & GLOW',kinds:['treatment','other'],side:'center'},
+    {title:'MOISTURIZE',kinds:['moisturize'],side:'center'},
+    {title:'SUN & BODY',kinds:['spf','body'],side:'right'}
+  ];
+  const items = (group) => products.filter(product=>group.kinds.includes(product.kind));
+  const shelf = (group) => '<section class="shelf '+group.side+'"><span class="shelf-label">'+group.title+'</span><div class="shelf-products">'+
+    (items(group).length ? items(group).map(product=>
+      '<button type="button" class="shelf-product" data-edit-cabinet="'+product.id+'" aria-label="แก้ไข '+esc(product.name)+'">'+
+        cabinetProductImage(product)+'<span>'+esc(product.name)+'</span></button>').join(''):
+      '<span class="shelf-empty">รอวางของชิ้นโปรด</span>')+
+    '</div></section>';
+  return '<div class="beauty-fridge" aria-label="ตู้สกินแคร์ของคุณ"><div class="cabinet-door door-left">'+shelf(groups[0])+'</div>'+
+    '<div class="cabinet-core"><div class="cabinet-light"><span>GLOW</span><i></i><i></i><i></i></div>'+shelf(groups[1])+shelf(groups[2])+'</div>'+
+    '<div class="cabinet-door door-right">'+shelf(groups[3])+'</div></div>'+
+    '<p class="cabinet-hint">'+icon('sparkle')+' แตะผลิตภัณฑ์บนชั้นเพื่อแก้ไขรายละเอียด</p>';
+}
+
 function cabinet() {
   const p = current();
   const products = p.products ?? [];
@@ -736,14 +757,15 @@ function cabinet() {
       '<div class="field"><label for="cabinet-expires">ใช้ก่อนวันที่</label><input id="cabinet-expires" name="expires" data-cabinet-key="expires" type="date" value="'+esc(draft.expires)+'" '+(full?'disabled':'')+'></div></div>'+
     '<div class="field"><label for="cabinet-note">โน้ตเล็ก ๆ</label><textarea id="cabinet-note" name="note" data-cabinet-key="note" rows="2" maxlength="180" placeholder="เช่น ชอบเนื้อเบา ใช้ตอนเช้า" '+(full?'disabled':'')+'>'+esc(draft.note)+'</textarea></div>'+
     '<div class="actions"><button type="submit" class="btn" '+(full?'disabled':'')+'>'+icon('check')+(draft.id?'บันทึกการแก้ไข':'เก็บเข้าตู้')+'</button></div></form></section>'+
-    '<section class="box"><div class="section-top"><div><h2>ของในตู้</h2><p class="subtle">แตะ “เลือกใช้” ตอนแก้รูทีนได้</p></div><span class="pill">'+products.length+'/'+maxCabinetProducts+'</span></div>'+
-    (products.length?'<div class="cabinet-list">'+products.map(product=>{
+    '<section class="box cabinet-display"><div class="section-top"><div><h2>เปิดตู้ของฉัน</h2><p class="subtle">แตะขวดหรือหลอดบนชั้นเพื่อดูแลต่อ</p></div><span class="pill">'+products.length+'/'+maxCabinetProducts+'</span></div>'+
+    cabinetShelf(p)+
+    (products.length?'<details class="cabinet-details"><summary>ดูรายละเอียดทั้งหมด · '+products.length+' ชิ้น</summary><div class="cabinet-list">'+products.map(product=>{
       const status = cabinetStatus(product);
       return '<article class="cabinet-card"><div class="cabinet-card-top">'+cabinetProductImage(product)+'<div><span class="cabinet-kind">'+cabinetKinds[product.kind]+'</span><h3>'+esc(product.name)+'</h3><small>เริ่มใช้ '+(product.opened?thaiDate(product.opened):'ยังไม่ระบุ')+'</small></div></div>'+
         '<div class="cabinet-tags"><span class="cabinet-status '+status.style+'">'+esc(status.label)+'</span><span class="cabinet-check '+product.check+'">'+cabinetChecks[product.check]+'</span></div>'+
         (product.note?'<p>'+esc(product.note)+'</p>':'')+
         '<div class="actions"><button type="button" class="btn light small" data-edit-cabinet="'+product.id+'">แก้ไข</button><button type="button" class="link-btn" data-delete-cabinet="'+product.id+'">ลบ</button></div></article>';
-    }).join('')+'</div>':'<div class="cabinet-empty"><span class="badge-icon mint">'+icon('cream')+'</span><h3>ตู้ยังว่างอยู่</h3><p class="subtle">เริ่มจากของที่ใช้ทุกวันสัก 1–3 ชิ้นก่อนก็พอ</p></div>')+
+    }).join('')+'</div></details>':'<div class="cabinet-empty"><span class="badge-icon mint">'+icon('cream')+'</span><h3>ตู้ยังว่างอยู่</h3><p class="subtle">เพิ่มสกินแคร์ชิ้นแรก แล้วมาวางไว้ในตู้กัน</p></div>')+
     '</section></div>';
 }
 function saveCabinet(data) {
