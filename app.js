@@ -363,6 +363,54 @@ const habitPresets = {
   scrub:{title:'สครับผิวกาย',time:'19:30',days:[2],detail:'ถ้าผิวระคายเคือง ไหม้แดด หรือมีแผล ให้ข้ามวันนี้'},
   photo:{title:'ถ่ายรูปติดตามผิว',time:'08:00',days:[6],detail:'ถ่ายมุมและแสงเดิม แล้วเก็บไว้ที่หน้าเป้าหมาย'}
 };
+const skin7HabitIds = ['skin7-retinol-mask','skin7-eye-mask','skin7-hydrating-mask','skin7-eye-cream'];
+const skin7Morning = {
+  time:'07:00',
+  items:[
+    {id:'cleanse',title:'ล้างหน้า',product:'CeraVe Foaming Cleanser',detail:'ล้างหน้าเบา ๆ',time:'',photo:''},
+    {id:'moisturize',title:'เติมความชุ่มชื้น',product:'CeraVe Facial Moisturizing Lotion',detail:'เติมความชุ่มชื้นทั่วหน้า',time:'',photo:''},
+    {id:'eye-care',title:'ทา Eye Cream',product:'CeraVe Eye Repair Cream',detail:'ทารอบกระดูกเบ้าตาอย่างเบามือ',time:'',photo:''},
+    {id:'spf',title:'ทากันแดด',product:'Skin Aqua SPF50+ PA++++',detail:'ขั้นตอนสุดท้ายของตอนเช้า',time:'',photo:''}
+  ]
+};
+const skin7Night = {
+  time:'21:00',
+  items:[
+    {id:'cleanse',title:'ล้างหน้า',product:'CeraVe Foaming Cleanser',detail:'ล้างหน้าเบา ๆ ก่อนเริ่มขั้นกลางคืน',time:'',photo:''},
+    {id:'moisturize',title:'เติมความชุ่มชื้น',product:'CeraVe PM Moisturizer',detail:'ทาหลังขั้นกลางคืนตามตาราง',time:'21:35',photo:''}
+  ]
+};
+const skin7Habits = [
+  {id:'skin7-retinol-mask',title:'SOME BY MI Retinol Mask',time:'21:10',days:[0,1,3,5],detail:'ใช้ 10–20 นาทีตามฉลาก แล้วหลีกเลี่ยงรอบดวงตาและไม่เพิ่ม Retinol ตัวอื่น'},
+  {id:'skin7-eye-mask',title:'Eye Mask',time:'21:10',days:[2,6],detail:'ใช้ 10–15 นาที หากผิวรอบตาไม่ระคายเคือง'},
+  {id:'skin7-hydrating-mask',title:'Hydrating Sheet Mask',time:'21:10',days:[4],detail:'เลือกสูตรที่ไม่มี Retinol หรือกรดผลัดเซลล์ผิว'},
+  {id:'skin7-eye-cream',title:'ทา Eye Cream',time:'21:25',days:[2,4,6],detail:'ทารอบกระดูกเบ้าตาอย่างเบามือ'}
+];
+function skin7PlanCard() {
+  return '<section class="box skin7-card"><div class="goal-head"><div class="badge-icon peach">'+icon('moon')+'</div><div><span class="kicker">7 DAY ROUTINE</span><h3>ตาราง CeraVe + Retinol Mask</h3></div></div>'+
+    '<p class="subtle">เช้าทุกวัน · กลางคืน Retinol จ. อ. พฤ. ส. · Recovery พ. อา. · Hydration ศ.</p>'+
+    '<button type="button" class="btn light small" id="apply-skin7-plan">ใช้ตารางนี้ให้เราสองคน'+icon('arrow')+'</button></section>';
+}
+function applySkin7Plan() {
+  if (!window.confirm('ใช้ตารางนี้แทนรูทีนเช้าและก่อนนอนของทั้งสองคนหรือไม่? งานดูแลตัวเองอื่นในปฏิทินจะยังอยู่')) return;
+  if (state.people.some(profile=>(profile.habits ?? []).filter(task=>!skin7HabitIds.includes(task.id)).length+skin7Habits.length>32)) {
+    return notify('ปฏิทินของหนึ่งโปรไฟล์เก็บงานครบ 32 งานแล้ว ลบงานที่ไม่ได้ใช้ก่อน');
+  }
+  const today = dayKey();
+  if (update(()=>{
+    state.people.forEach(profile=>{
+      profile.routine = {am:structuredClone(skin7Morning),pm:structuredClone(skin7Night)};
+      if (profile.todayRoutine?.date===today) delete profile.todayRoutine;
+      profile.habits = [...(profile.habits ?? []).filter(task=>!skin7HabitIds.includes(task.id)),
+        ...skin7Habits.map(habit=>({...structuredClone(habit),once:'',since:today}))];
+      delete profile.morningStart;
+      refreshDay(profile,today);
+    });
+  },'ใส่ตารางสกินแคร์ให้เราสองคนแล้ว ♡')) {
+    calendarDate = today;
+    goto('home');
+  }
+}
 let calendarDate = dayKey();
 let calendarView = 'week';
 let habitDraft = null;
@@ -727,7 +775,7 @@ function home() {
       const done = tasks.filter(task=>task.status==='done').length;
       return '<div class="couple-row">'+avatar(person,index)+'<strong>'+esc(person.name)+'</strong>'+bar(done,tasks.length)+'<small>'+done+'/'+tasks.length+'</small></div>';
     }).join('')+'<button type="button" class="link-btn" data-page="share">แชร์ยอด 7 วัน</button></section>'+
-    '<section class="box goal-card"><div class="goal-head"><div class="badge-icon mint">'+icon('target')+'</div><div><span class="kicker">MY SKIN GOAL</span><h3>เป้าหมายของ'+esc(p.name)+'</h3></div></div><p class="subtle">'+esc(p.goal || 'เลือกสิ่งที่อยากให้ผิวค่อย ๆ ดีขึ้น')+'</p><button class="link-btn" data-page="goals">'+(p.goal?'ดูความคืบหน้า':'ตั้งเป้าหมาย')+icon('arrow')+'</button></section>'+
+    skin7PlanCard()+'<section class="box goal-card"><div class="goal-head"><div class="badge-icon mint">'+icon('target')+'</div><div><span class="kicker">MY SKIN GOAL</span><h3>เป้าหมายของ'+esc(p.name)+'</h3></div></div><p class="subtle">'+esc(p.goal || 'เลือกสิ่งที่อยากให้ผิวค่อย ๆ ดีขึ้น')+'</p><button class="link-btn" data-page="goals">'+(p.goal?'ดูความคืบหน้า':'ตั้งเป้าหมาย')+icon('arrow')+'</button></section>'+
     cabinetSummary(p)+'</aside></div>';
 }
 
@@ -1622,6 +1670,7 @@ document.addEventListener('click', (event) => {
     return;
   }
   if (btn.id==='apply-skin-plan') return applySkinPlan();
+  if (btn.id==='apply-skin7-plan') return applySkin7Plan();
   if (btn.id==='copy-ai') return copyAiPrompt();
   if (btn.dataset.cabinetPicker) return $(btn.dataset.cabinetPicker).click();
   if (btn.id==='cancel-cabinet-edit') {
