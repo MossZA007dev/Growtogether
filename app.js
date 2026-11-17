@@ -45,6 +45,7 @@ const prefs = {
 
 const storageKey = 'glow-together.v1';
 const backupFormat = 'glow-together-backup';
+const backupMetaKey = 'glow-together.last-backup';
 const maxFacePhotos = 30;
 const maxSkinReply = 16000;
 const maxCabinetProducts = 18;
@@ -53,11 +54,14 @@ const cabinetChecks = {comfortable:'ผิวสบาย',unsure:'กำลั�
 let skinReplyText = '';
 let skinReplyReview = null;
 let cabinetDraft = null;
+let storageProtection = 'checking';
+let lastBackup = '';
 const newProfile = (name) => ({name, answers:null, goal:'', goalDate:'', days:{}, logs:[], photos:[], products:[]});
 let state = {active:0, people:[newProfile('ฉัน'),newProfile('แฟน')]};
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey));
   if (saved?.people?.length === 2) state = saved;
+  lastBackup = localStorage.getItem(backupMetaKey) ?? '';
 } catch {}
 let period = 'am';
 let page = 'home';
@@ -95,6 +99,31 @@ function update(change, message) {
 }
 function downloadBackup() {
   downloadFile(JSON.stringify({format:backupFormat,version:1,state}),'application/json','Glow-Together-Backup-'+dayKey()+'.json');
+  lastBackup = dayKey();
+  try { localStorage.setItem(backupMetaKey,lastBackup); } catch {}
+  if (page==='profile') render();
+  notify('ดาวน์โหลดไฟล์แล้ว เลือกบันทึกลง “ไฟล์” บน iPhone เพื่อเก็บสำรอง');
+}
+async function checkStorageProtection() {
+  if (!globalThis.isSecureContext || !globalThis.navigator?.storage) {
+    storageProtection = 'browser';
+  } else {
+    try {
+      const alreadyPersistent = await globalThis.navigator.storage.persisted();
+      storageProtection = alreadyPersistent || await globalThis.navigator.storage.persist() ? 'persistent' : 'browser';
+    } catch {
+      storageProtection = 'browser';
+    }
+  }
+  if (page==='profile') render();
+}
+function backupStatus() {
+  const needsBackup = !lastBackup || shiftDate(lastBackup,14)<dayKey();
+  const storageText = storageProtection==='persistent' ? 'พื้นที่เก็บข้อมูลของแอปได้รับการขอให้เก็บถาวรแล้ว' :
+    storageProtection==='checking' ? 'กำลังตรวจพื้นที่เก็บข้อมูลในเครื่อง' : 'ข้อมูลบันทึกใน Safari หรือเว็บแอปบนเครื่องนี้';
+  return '<section class="box backup-status"><div class="goal-head"><div class="badge-icon mint">'+icon('check')+'</div><div><h2>สถานะข้อมูล</h2><small>'+esc(storageText)+'</small></div></div>'+
+    '<p class="'+(needsBackup?'note':'subtle')+'">'+(lastBackup?'สำรองล่าสุด '+thaiDate(lastBackup)+(needsBackup?' · ถึงเวลาสำรองอีกครั้ง':''):'ยังไม่มีไฟล์สำรอง')+'</p>'+
+    '<p class="subtle">การอัปเดตแอปจะใช้ข้อมูลเดิมต่อได้ เพราะเก็บไว้ในเครื่องเดียวกัน</p></section>';
 }
 function downloadFile(contents, type, filename) {
   const blob = new Blob([contents], {type});
@@ -1490,7 +1519,8 @@ function profile() {
     '<p>เก็บไฟล์สำรองของทั้งสองโปรไฟล์ไว้ในเครื่อง ใช้กู้คืนหรือย้ายรูทีน เป้าหมาย บันทึก และรูปติดตามผิวได้</p>'+
     '<div class="actions"><button type="button" class="btn" id="backup-export">ดาวน์โหลดไฟล์สำรอง</button>'+
     '<button type="button" class="btn light" id="backup-import">นำเข้าไฟล์สำรอง</button><input type="file" id="backup-file" accept=".json,application/json" hidden></div>'+
-    '<p class="note">ข้อมูลในแอปอยู่ในเบราว์เซอร์นี้ ไฟล์สำรองรวมรูปใบหน้าที่คุณเก็บไว้ ควรเก็บไฟล์ในที่ส่วนตัว</p></section>'+installHelp+'</div>';
+    '<p class="note">ข้อมูลในแอปอยู่ในเบราว์เซอร์นี้ ไฟล์สำรองรวมรูปใบหน้าที่คุณเก็บไว้ ควรเก็บไฟล์ในที่ส่วนตัว</p></section>'+
+    backupStatus()+installHelp+'</div>';
 }
 
 function render() {
@@ -1888,3 +1918,4 @@ if (page!=='shared' && !current().dayTasks?.[dayKey()]) {
 if (globalThis.isSecureContext && location.protocol!=='file:' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
+checkStorageProtection();
